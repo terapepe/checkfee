@@ -1,13 +1,19 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatUnits, zeroAddress } from 'viem';
-import { WalletResult, fetchWallet, Nav } from '../WalletResult';
+import { WalletResult, fetchWallet, Nav, useWallet } from '../WalletResult';
 
 export default function Multi() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [err, setErr] = useState('');
+  const w = useWallet();
+
+  // ví vừa kết nối / đổi trong MetaMask → thêm vào danh sách nếu chưa có
+  useEffect(() => {
+    if (w.account) setInput(v => v.toLowerCase().includes(w.account.toLowerCase()) ? v : (v.trim() ? v.trim() + '\n' : '') + w.account);
+  }, [w.account]);
 
   async function check(e) {
     e.preventDefault();
@@ -37,7 +43,7 @@ export default function Multi() {
 
   return (
     <main>
-      <Nav active="multi" />
+      <Nav active="multi" wallet={w} />
       <h1>Pons Fee Checker · nhiều ví</h1>
       <div className="muted">Pons v2 · Robinhood Chain (4663) · dữ liệu đọc trực tiếp on-chain</div>
 

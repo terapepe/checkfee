@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatUnits, zeroAddress, isAddress } from 'viem';
 import { checkWallet } from '../lib/pons';
 
@@ -184,11 +184,38 @@ export async function fetchWallet(wallet, tries = 3) {
   throw last;
 }
 
-export function Nav({ active }) {
+// Ví đang kết nối trong MetaMask; tự cập nhật khi người dùng đổi ví
+export function useWallet() {
+  const [account, setAccount] = useState('');
+  useEffect(() => {
+    const eth = window.ethereum;
+    if (!eth) return;
+    const onChange = a => setAccount(a?.[0] || '');
+    eth.request({ method: 'eth_accounts' }).then(onChange).catch(() => {});
+    eth.on?.('accountsChanged', onChange);
+    return () => eth.removeListener?.('accountsChanged', onChange);
+  }, []);
+  async function connect() {
+    if (!window.ethereum) return alert('Không thấy MetaMask trong trình duyệt');
+    const a = await window.ethereum.request({ method: 'eth_requestAccounts' }).catch(() => []);
+    setAccount(a?.[0] || '');
+  }
+  async function disconnect() {
+    await window.ethereum?.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }).catch(() => {});
+    setAccount('');
+  }
+  return { account, connect, disconnect };
+}
+
+export function Nav({ active, wallet }) {
   return (
     <nav className="nav">
       <a href="/" className={active === 'one' ? 'on' : ''}>Check 1 ví</a>
       <a href="/multi" className={active === 'multi' ? 'on' : ''}>Check nhiều ví</a>
+      <span className="spacer" />
+      {wallet && (wallet.account
+        ? <button type="button" className="copy" onClick={wallet.disconnect} title="Ngắt kết nối">{short(wallet.account)} ✕</button>
+        : <button type="button" className="copy" onClick={wallet.connect}>Connect Wallet</button>)}
     </nav>
   );
 }
