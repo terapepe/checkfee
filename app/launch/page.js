@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { parseEther, formatEther, isAddress } from 'viem';
 import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt } from '../ui';
 import { IconBolt, IconExternal, TokenAvatar } from '../icons';
-import { readLaunchInfo, predictSplitter, buildLaunchTx, parseLaunch, waitReceipt } from '../../lib/launch';
+import { readLaunchInfo, predictSplitter, buildLaunchTx, parseLaunch, waitReceipt, needsSplitterDeploy } from '../../lib/launch';
 
 const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', taxBps: 0, buyback: false, buy: '' };
 
@@ -51,6 +51,14 @@ export default function Launch() {
       const eth = window.ethereum;
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
+      const pre = await needsSplitterDeploy(from, f.payout);
+      if (pre) {
+        setSt({ step: 'Bước 1/2: deploy contract chia phí cho ví nhận 90%…' });
+        const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: pre.to, data: pre.data, value: '0x0' }] });
+        const rc0 = await waitReceipt(h);
+        if (rc0.status !== 'success') throw new Error('Deploy contract chia phí thất bại');
+        setSt({ step: 'Bước 2/2: đang giả lập launch…' });
+      }
       const tx = await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
       setSt({ step: 'Xác nhận trong MetaMask…' });
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
@@ -121,7 +129,7 @@ export default function Launch() {
         <div className="card lf">
           <h3 style={{ marginTop: 0 }}>Phí &amp; mua đầu</h3>
           <label>Ví nhận 90% phí creator<input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
-          <p className="muted small">Ví nhận phí của token sẽ là contract chia phí {splitter ? <a className="mono" href={`${EXPLORER}/address/${splitter}`} target="_blank" rel="noreferrer">{short(splitter)}</a> : '…'} (cố định vĩnh viễn, không đổi được sau khi launch).</p>
+          <p className="muted small">Ví nhận phí của token sẽ là contract chia phí {splitter ? <a className="mono" href={`${EXPLORER}/address/${splitter}`} target="_blank" rel="noreferrer">{short(splitter)}</a> : '…'} (cố định vĩnh viễn, không đổi được sau khi launch). Nếu ví nhận 90% khác ví đang launch, trang sẽ deploy contract này trước (thêm 1 giao dịch).</p>
           <label>Creator tax: <b>{f.taxBps / 100}%</b>
             <input type="range" min={0} max={info?.maxTaxBps ?? 1000} step={50} value={f.taxBps} onChange={set('taxBps')} />
           </label>
