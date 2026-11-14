@@ -4,6 +4,7 @@ import { parseEther, formatEther, isAddress } from 'viem';
 import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt } from '../ui';
 import { IconBolt, IconExternal, TokenAvatar } from '../icons';
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
+import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
 
 const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', taxBps: 0, buyback: false, buy: '' };
 
@@ -15,7 +16,14 @@ export default function Launch() {
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
   const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
+  const [credits, setCredits] = useState(null); // null = đang đọc
   useEffect(() => { readLaunchInfo(w.account).then(setInfo).catch(() => {}); }, [w.account]);
+  useEffect(() => {
+    setCredits(null);
+    if (w.account) launchCredits(w.account).then(setCredits).catch(() => setCredits(0));
+  }, [w.account]);
+  const free = credits != null && credits > 0;
+  const serviceFee = free ? 0n : CHECKFEE_LAUNCH_FEE;
   useEffect(() => { if (w.account) setF(v => (v.payout ? v : { ...v, payout: w.account })); }, [w.account]);
 
   async function pickImage(e) {
@@ -36,9 +44,9 @@ export default function Launch() {
 
   let quoteIn = 0n;
   try { quoteIn = f.buy ? parseEther(String(f.buy)) : 0n; } catch {}
-  const total = info ? info.launchFee + quoteIn + CHECKFEE_LAUNCH_FEE : null;
+  const total = info ? info.launchFee + quoteIn + serviceFee : null;
   const payoutOk = isAddress(f.payout || '', { strict: false });
-  const ready = w.account && f.name.trim() && f.symbol.trim() && img.uri && payoutOk && info?.canLaunch && !st.step;
+  const ready = w.account && f.name.trim() && f.symbol.trim() && img.uri && payoutOk && info?.canLaunch && credits != null && !st.step;
 
   async function launch(e) {
     e.preventDefault();
@@ -49,15 +57,24 @@ export default function Launch() {
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
       // giả lập launch trước để không thu phí khi launch chắc chắn lỗi
       const tx = await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
-      setSt({ step: 'Bước 1/2: phí dịch vụ checkfee 0.00003 ETH…' });
-      const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: CHECKFEE_WALLET, value: '0x' + CHECKFEE_LAUNCH_FEE.toString(16) }] });
-      const rc0 = await waitReceipt(h);
-      if (rc0.status !== 'success') throw new Error('Chuyển phí dịch vụ thất bại');
-      setSt({ step: 'Bước 2/2: xác nhận launch trong MetaMask…' });
+      // còn lượt miễn phí (đã trả phí mà chưa launch) thì không thu lại
+      const left = await launchCredits(from);
+      if (left > 0) {
+        setSt({ step: 'Xác nhận launch trong MetaMask…' });
+      } else {
+        setSt({ step: 'Bước 1/2: phí dịch vụ checkfee 0.00003 ETH…' });
+        const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: CHECKFEE_WALLET, value: '0x' + CHECKFEE_LAUNCH_FEE.toString(16) }] });
+        const rc0 = await waitReceipt(h);
+        if (rc0.status !== 'success') throw new Error('Chuyển phí dịch vụ thất bại');
+        markFeePaid(from);
+        setCredits(1);
+        setSt({ step: 'Bước 2/2: xác nhận launch trong MetaMask…' });
+      }
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
       setSt({ step: 'Đang chờ xác nhận on-chain…', hash });
       const rc = await waitReceipt(hash);
       if (rc.status !== 'success') throw new Error('Giao dịch launch thất bại');
+      clearFeePaid(from);
       const L = parseLaunch(rc.logs);
       setSt({ step: '', hash, token: L?.token || '' });
     } catch (er) {
@@ -131,8 +148,8 @@ export default function Launch() {
           <div className="sum">
             <div><span>Phí launch</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span>Mua đầu</span><b>{fmt(quoteIn)} ETH</b></div>
-            <div><span>Phí dịch vụ checkfee</span><b>{formatEther(CHECKFEE_LAUNCH_FEE)} ETH</b></div>
-            <div><span>Tổng (2 giao dịch, chưa gồm gas)</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
+            <div><span>Phí dịch vụ checkfee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">miễn phí{Number.isFinite(credits) ? ` (còn ${credits} lượt)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
+            <div><span>Tổng{free ? '' : ' (2 giao dịch)'}, chưa gồm gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg="Pons đang chỉ cho ví trong whitelist launch." />}
           {!w.account && <p className="hint">Bấm <b>Connect Wallet</b> ở thanh bên trái để launch.</p>}
