@@ -19,7 +19,9 @@ export const priceUsd = v => {
   if (v >= 1) return '$' + v.toFixed(4);
   const s = v.toExponential(2);
   const exp = -parseInt(s.split('e')[1], 10);
-  return exp > 5 ? `$0.0{${exp - 1}}${(v * 10 ** (exp + 2)).toFixed(0)}` : '$' + v.toFixed(exp + 3);
+  // nhiều số 0 sau dấu phẩy → dạng $0.0₅320 (chỉ số dưới = số chữ số 0)
+  const sub = n => String(n).split('').map(d => '₀₁₂₃₄₅₆₇₈₉'[d]).join('');
+  return exp > 4 ? `$0.0${sub(exp - 1)}${(v * 10 ** (exp + 2)).toFixed(0)}` : '$' + v.toFixed(exp + 3);
 };
 export const ago = sec => {
   if (!sec) return '—';

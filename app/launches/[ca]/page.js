@@ -115,7 +115,7 @@ export default function TokenPage() {
           <div className="card tp-bond">
             <div className="row"><span>Bonding curve</span><b>{s.phase > 0 ? 'Đã graduate' : `${(s.progress * 100).toFixed(2)}%`}</b></div>
             <div className="lp-prog big"><i style={{ width: `${Math.round(s.progress * 100)}%` }} /></div>
-            {s.phase === 0 && <small className="muted">{Number(formatEther(s.realQuote)).toFixed(4)} / {Number(formatEther(s.threshold))} ETH — đủ ngưỡng sẽ graduate sang Uniswap v4</small>}
+            {s.phase === 0 && <small className="muted">{Number(formatEther(s.realQuote)).toPrecision(3)} / {Number(formatEther(s.threshold))} ETH — đủ ngưỡng sẽ graduate sang Uniswap v4</small>}
           </div>
 
           {s.description && (<><h3>Giới thiệu</h3><p className="tp-about">{s.description}</p></>)}
