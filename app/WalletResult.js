@@ -214,8 +214,8 @@ export function Nav({ active, wallet }) {
       <a href="/multi" className={active === 'multi' ? 'on' : ''}>Check nhiều ví</a>
       <span className="spacer" />
       {wallet && (wallet.account
-        ? <button type="button" className="copy" onClick={wallet.disconnect} title="Ngắt kết nối">{short(wallet.account)} ✕</button>
-        : <button type="button" className="copy" onClick={wallet.connect}>Connect Wallet</button>)}
+        ? <button type="button" className="connected" onClick={wallet.disconnect} title="Ngắt kết nối">{short(wallet.account)} ✕</button>
+        : <button type="button" onClick={wallet.connect}>Connect Wallet</button>)}
     </nav>
   );
 }
