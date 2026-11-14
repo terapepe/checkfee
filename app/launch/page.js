@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { parseEther, formatEther, isAddress } from 'viem';
 import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt } from '../ui';
 import { IconBolt, IconExternal, TokenAvatar } from '../icons';
-import { readLaunchInfo, predictSplitter, buildLaunchTx, parseLaunch, waitReceipt, needsSplitterDeploy } from '../../lib/launch';
+import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 
 const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', taxBps: 0, buyback: false, buy: '' };
 
@@ -12,16 +12,11 @@ export default function Launch() {
   const [f, setF] = useState(EMPTY);
   const [img, setImg] = useState({ file: null, preview: '', uri: '', uploading: false });
   const [info, setInfo] = useState(null);
-  const [splitter, setSplitter] = useState('');
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
   const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
   useEffect(() => { readLaunchInfo(w.account).then(setInfo).catch(() => {}); }, [w.account]);
   useEffect(() => { if (w.account) setF(v => (v.payout ? v : { ...v, payout: w.account })); }, [w.account]);
-  useEffect(() => {
-    setSplitter('');
-    if (isAddress(f.payout || '', { strict: false })) predictSplitter(f.payout).then(setSplitter).catch(() => {});
-  }, [f.payout]);
 
   async function pickImage(e) {
     const file = e.target.files?.[0];
@@ -41,8 +36,9 @@ export default function Launch() {
 
   let quoteIn = 0n;
   try { quoteIn = f.buy ? parseEther(String(f.buy)) : 0n; } catch {}
-  const total = info ? info.launchFee + quoteIn : null;
-  const ready = w.account && f.name.trim() && f.symbol.trim() && img.uri && splitter && info?.canLaunch && !st.step;
+  const total = info ? info.launchFee + quoteIn + CHECKFEE_LAUNCH_FEE : null;
+  const payoutOk = isAddress(f.payout || '', { strict: false });
+  const ready = w.account && f.name.trim() && f.symbol.trim() && img.uri && payoutOk && info?.canLaunch && !st.step;
 
   async function launch(e) {
     e.preventDefault();
@@ -51,16 +47,13 @@ export default function Launch() {
       const eth = window.ethereum;
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
-      const pre = await needsSplitterDeploy(from, f.payout);
-      if (pre) {
-        setSt({ step: 'Bước 1/2: deploy contract chia phí cho ví nhận 90%…' });
-        const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: pre.to, data: pre.data, value: '0x0' }] });
-        const rc0 = await waitReceipt(h);
-        if (rc0.status !== 'success') throw new Error('Deploy contract chia phí thất bại');
-        setSt({ step: 'Bước 2/2: đang giả lập launch…' });
-      }
+      // giả lập launch trước để không thu phí khi launch chắc chắn lỗi
       const tx = await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
-      setSt({ step: 'Xác nhận trong MetaMask…' });
+      setSt({ step: 'Bước 1/2: phí dịch vụ checkfee 0.00003 ETH…' });
+      const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: CHECKFEE_WALLET, value: '0x' + CHECKFEE_LAUNCH_FEE.toString(16) }] });
+      const rc0 = await waitReceipt(h);
+      if (rc0.status !== 'success') throw new Error('Chuyển phí dịch vụ thất bại');
+      setSt({ step: 'Bước 2/2: xác nhận launch trong MetaMask…' });
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
       setSt({ step: 'Đang chờ xác nhận on-chain…', hash });
       const rc = await waitReceipt(hash);
@@ -75,7 +68,7 @@ export default function Launch() {
   if (st.token) {
     return (
       <>
-        <PageHeader icon={IconBolt} title="Launch thành công" desc="Token đã được tạo trên Pons v2, phí creator chia 90/10 qua contract chia phí." />
+        <PageHeader icon={IconBolt} title="Launch thành công" desc="Token đã được tạo trên Pons v2. Phí creator về thẳng ví nhận phí của bạn." />
         <div className="card token">
           <div className="tk-head">
             <TokenAvatar address={st.token} symbol={f.symbol} />
@@ -89,8 +82,7 @@ export default function Launch() {
             </div>
           </div>
           <div className="kv">
-            <span>Contract chia phí</span><span className="mono">{splitter}</span>
-            <span>Creator nhận 90%</span><span className="mono">{f.payout}</span>
+            <span>Ví nhận phí creator</span><span className="mono">{f.payout}</span>
           </div>
         </div>
         <p className="hint"><a href="/launch" onClick={() => location.reload()}>← Launch token khác</a></p>
@@ -100,7 +92,7 @@ export default function Launch() {
 
   return (
     <>
-      <PageHeader icon={IconBolt} title="Launch token" desc="Tạo token trên Pons v2 (cặp ETH). Phí creator tự động chia 90% cho bạn / 10% cho checkfee qua contract đã verify." />
+      <PageHeader icon={IconBolt} title="Launch token" desc="Tạo token trên Pons v2 (cặp ETH). Phí creator về thẳng ví của bạn (Pons giữ 30% phí gốc), claim rẻ như bình thường." />
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
           <h3 style={{ marginTop: 0 }}>Thông tin token</h3>
@@ -128,8 +120,8 @@ export default function Launch() {
 
         <div className="card lf">
           <h3 style={{ marginTop: 0 }}>Phí &amp; mua đầu</h3>
-          <label>Ví nhận 90% phí creator<input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
-          <p className="muted small">Ví nhận phí của token sẽ là contract chia phí {splitter ? <a className="mono" href={`${EXPLORER}/address/${splitter}`} target="_blank" rel="noreferrer">{short(splitter)}</a> : '…'} (cố định vĩnh viễn, không đổi được sau khi launch). Nếu ví nhận 90% khác ví đang launch, trang sẽ deploy contract này trước (thêm 1 giao dịch).</p>
+          <label>Ví nhận phí creator<input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
+          <p className="muted small">Ví này nhận 70% phí giao dịch gốc + 100% creator tax, claim trực tiếp ở trang Check. Mặc định là ví đang kết nối.</p>
           <label>Creator tax: <b>{f.taxBps / 100}%</b>
             <input type="range" min={0} max={info?.maxTaxBps ?? 1000} step={50} value={f.taxBps} onChange={set('taxBps')} />
           </label>
@@ -139,7 +131,8 @@ export default function Launch() {
           <div className="sum">
             <div><span>Phí launch</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span>Mua đầu</span><b>{fmt(quoteIn)} ETH</b></div>
-            <div><span>Tổng gửi (chưa gồm gas)</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
+            <div><span>Phí dịch vụ checkfee</span><b>{formatEther(CHECKFEE_LAUNCH_FEE)} ETH</b></div>
+            <div><span>Tổng (2 giao dịch, chưa gồm gas)</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg="Pons đang chỉ cho ví trong whitelist launch." />}
           {!w.account && <p className="hint">Bấm <b>Connect Wallet</b> ở thanh bên trái để launch.</p>}
