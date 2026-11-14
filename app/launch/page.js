@@ -146,7 +146,7 @@ export default function Launch() {
           <label>Mua ngay khi launch (ETH, tuỳ chọn)<input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
           <div className="sum">
-            <div><span>Phí launch</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
+            <div><span>Phí khởi tạo token trên Ponsfamily</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span>Mua đầu</span><b>{fmt(quoteIn)} ETH</b></div>
             <div><span>Phí dịch vụ checkfee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">miễn phí{Number.isFinite(credits) ? ` (còn ${credits} lượt)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
             <div><span>Tổng{free ? '' : ' (2 giao dịch)'}, chưa gồm gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>

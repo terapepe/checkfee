@@ -50,6 +50,7 @@ const NAV = [
   { href: '/', label: 'Check 1 ví', icon: IconWallet },
   { href: '/multi', label: 'Check nhiều ví', icon: IconWallets },
   { href: '/ca', label: 'Check theo CA', icon: IconCoin },
+  { href: '/launches', label: 'Launches', icon: IconWallets },
   { href: '/launch', label: 'Launch token', icon: IconBolt },
 ];
 
@@ -66,7 +67,7 @@ export function Shell({ children }) {
         <nav className="menu">
           <div className="menu-label">Công cụ</div>
           {NAV.map(({ href, label, icon: Icon }) => (
-            <a key={href} href={href} className={path === href ? 'on' : ''}><Icon />{label}</a>
+            <a key={href} href={href} className={path === href || (href === '/launches' && path?.startsWith('/launches/')) ? 'on' : ''}><Icon />{label}</a>
           ))}
           <div className="menu-label">Liên kết</div>
           <a href="https://ponsfamily.com" target="_blank" rel="noreferrer"><IconExternal width={18} height={18} />Pons Family</a>
@@ -342,7 +343,7 @@ export const Spinner = ({ text = 'Đang đọc dữ liệu on-chain…' }) => <d
 /* ---------------- Gọi dữ liệu (chạy trong trình duyệt) ---------------- */
 // Đọc on-chain bằng IP người dùng để RPC công khai không chặn IP server; thử lại khi bị rate limit.
 let ethUsdCache = null;
-async function getEthUsd() {
+export async function getEthUsd() {
   if (ethUsdCache) return ethUsdCache;
   try {
     const j = await fetch('/api/price', { cache: 'no-store' }).then(r => r.json());
