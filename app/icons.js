@@ -48,3 +48,21 @@ export function TokenAvatar({ address, symbol, size = 40 }) {
     </svg>
   );
 }
+
+// ---- Launch form icons (generic glyphs) ----
+const S = { width: 15, height: 15 };
+export const IconImage = I(<><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="m21 16-5-5-8 8" /></>, { width: 22, height: 22 });
+export const IconTag = I(<><path d="M3 12V4.5A1.5 1.5 0 0 1 4.5 3H12l9 9-9 9z" /><circle cx="8" cy="8" r="1.4" /></>, S);
+export const IconHash = I(<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16" />, S);
+export const IconText = I(<path d="M4 6h16M4 11h16M4 16h10" />, S);
+export const IconAt = I(<><circle cx="12" cy="12" r="3.5" /><path d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.4 6.8" /></>, S);
+export const IconSend = I(<><path d="M21 3 10 14" /><path d="M21 3 14.5 21 10 14 3 9.5z" /></>, S);
+export const IconGlobe = I(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z" /></>, S);
+export const IconChat = I(<><path d="M20 12a7 7 0 0 1-10.2 6.2L4 20l1.6-4.9A7 7 0 1 1 20 12z" /><path d="M9 11h.01M12 11h.01M15 11h.01" /></>, S);
+export const IconArch = I(<><path d="M4 20V7l8-4 8 4v13" /><path d="M9 20v-6a3 3 0 0 1 6 0v6" /></>, S);
+export const IconPercent = I(<><path d="M19 5 5 19" /><circle cx="7" cy="7" r="2.2" /><circle cx="17" cy="17" r="2.2" /></>, S);
+export const IconRecycle = I(<><path d="M20 12a8 8 0 0 1-13.7 5.7" /><path d="M4 12a8 8 0 0 1 13.7-5.7" /><path d="M18 3v4h-4M6 21v-4h4" /></>, S);
+export const IconCart = I(<><path d="M3 4h2.5l2.2 11h10.6L20.5 8H7" /><circle cx="9.5" cy="19" r="1.4" /><circle cx="17" cy="19" r="1.4" /></>, S);
+export const IconReceipt = I(<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>, S);
+export const IconSpark = I(<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" />, S);
+export const IconLayers = I(<><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></>, S);

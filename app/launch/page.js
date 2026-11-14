@@ -2,7 +2,9 @@
 import { useEffect, useState } from 'react';
 import { parseEther, formatEther, isAddress } from 'viem';
 import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt } from '../ui';
-import { IconBolt, IconExternal, TokenAvatar } from '../icons';
+import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, IconText, IconAt, IconSend, IconGlobe, IconChat, IconArch, IconWallet, IconPercent, IconRecycle, IconCart, IconReceipt, IconLayers, IconCoin, IconSpark } from '../icons';
+
+const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
 
@@ -112,44 +114,44 @@ export default function Launch() {
       <PageHeader icon={IconBolt} title="Launch token" desc="Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost." />
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
-          <h3 style={{ marginTop: 0 }}>Token details</h3>
+          <h3 className="sec"><IconLayers />Token details</h3>
           <div className="lf-row">
             <label className="img-pick">
-              {img.preview ? <img src={img.preview} alt="" /> : <span>+ Image<br /><small>PNG/JPG/WEBP/GIF ≤2MB</small></span>}
+              {img.preview ? <img src={img.preview} alt="" /> : <span><IconImage /><br />+ Image<br /><small>PNG/JPG/WEBP/GIF ≤2MB</small></span>}
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={pickImage} hidden />
               {img.uploading && <em className="badge">uploading…</em>}
               {img.uri && <em className="badge">IPFS ✓</em>}
             </label>
             <div className="lf-col">
-              <label>Token name<input value={f.name} onChange={set('name')} maxLength={32} placeholder="NEXT AI" required /></label>
-              <label>Ticker<input value={f.symbol} onChange={set('symbol')} maxLength={10} placeholder="NEXT" required /></label>
+              <label><L icon={IconTag}>Token name</L><input value={f.name} onChange={set('name')} maxLength={32} placeholder="NEXT AI" required /></label>
+              <label><L icon={IconHash}>Ticker</L><input value={f.symbol} onChange={set('symbol')} maxLength={10} placeholder="NEXT" required /></label>
             </div>
           </div>
-          <label>Description<textarea rows={3} value={f.description} onChange={set('description')} maxLength={500} /></label>
+          <label><L icon={IconText}>Description</L><textarea rows={3} value={f.description} onChange={set('description')} maxLength={500} /></label>
           <div className="lf-grid">
-            <label>X / Twitter<input value={f.twitter} onChange={set('twitter')} placeholder="https://x.com/…" /></label>
-            <label>Telegram<input value={f.telegram} onChange={set('telegram')} placeholder="https://t.me/…" /></label>
-            <label>Website<input value={f.website} onChange={set('website')} placeholder="https://…" /></label>
-            <label>Discord<input value={f.discord} onChange={set('discord')} placeholder="https://discord.gg/…" /></label>
-            <label>Farcaster<input value={f.farcaster} onChange={set('farcaster')} placeholder="https://warpcast.com/…" /></label>
+            <label><L icon={IconAt}>X / Twitter</L><input value={f.twitter} onChange={set('twitter')} placeholder="https://x.com/…" /></label>
+            <label><L icon={IconSend}>Telegram</L><input value={f.telegram} onChange={set('telegram')} placeholder="https://t.me/…" /></label>
+            <label><L icon={IconGlobe}>Website</L><input value={f.website} onChange={set('website')} placeholder="https://…" /></label>
+            <label><L icon={IconChat}>Discord</L><input value={f.discord} onChange={set('discord')} placeholder="https://discord.gg/…" /></label>
+            <label><L icon={IconArch}>Farcaster</L><input value={f.farcaster} onChange={set('farcaster')} placeholder="https://warpcast.com/…" /></label>
           </div>
         </div>
 
         <div className="card lf">
-          <h3 style={{ marginTop: 0 }}>Fees &amp; first buy</h3>
-          <label>Creator fee wallet<input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
+          <h3 className="sec"><IconCoin width={16} height={16} />Fees &amp; first buy</h3>
+          <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
           <p className="muted small">This wallet receives 70% of the base trading fee + 100% of the creator tax, claimable directly on the Check pages. Defaults to the connected wallet.</p>
-          <label>Creator tax: <b>{f.taxBps / 100}%</b>
+          <label><L icon={IconPercent}>Creator tax: <b>{f.taxBps / 100}%</b></L>
             <input type="range" min={0} max={info?.maxTaxBps ?? 1000} step={50} value={f.taxBps} onChange={set('taxBps')} />
           </label>
-          <label className="check"><input type="checkbox" checked={f.buyback} onChange={set('buyback')} /> Enable buyback (part of creator fees buys back the token, vested over 5 years)</label>
-          <label>Buy at launch (ETH, optional)<input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
+          <label className="check"><input type="checkbox" checked={f.buyback} onChange={set('buyback')} /><IconRecycle className="ic" /> Enable buyback (part of creator fees buys back the token, vested over 5 years)</label>
+          <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
           <div className="sum">
-            <div><span>Ponsfamily token creation fee</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
-            <div><span>First buy</span><b>{fmt(quoteIn)} ETH</b></div>
-            <div><span>CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
-            <div><span>Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconSpark />Ponsfamily token creation fee</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconCart />First buy</span><b>{fmt(quoteIn)} ETH</b></div>
+            <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
+            <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg="Pons currently only allows whitelisted wallets to launch." />}
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
