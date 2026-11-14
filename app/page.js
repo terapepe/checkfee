@@ -32,7 +32,11 @@ export default function Home() {
         <input placeholder="0x… địa chỉ ví creator" value={wallet} onChange={e => setWallet(e.target.value)} />
         <button disabled={loading || !wallet.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
       </form>
-      {err && <p className="err">{err}</p>}
+      {err && (
+        <p className="err">{err}{' '}
+          {wallet.trim() && <button type="button" className="copy" disabled={loading} onClick={() => run(wallet)}>Check lại</button>}
+        </p>
+      )}
       {res && <WalletResult res={res} />}
     </main>
   );

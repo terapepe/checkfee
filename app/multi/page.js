@@ -33,6 +33,14 @@ export default function Multi() {
     setLoading(false);
   }
 
+  // check lại riêng 1 ví bị lỗi
+  async function recheck(wallet) {
+    const upd = patch => setResults(rs => rs.map(r => r.wallet === wallet ? { ...r, ...patch } : r));
+    upd({ loading: true, err: '' });
+    try { upd({ res: await fetchWallet(wallet), loading: false }); }
+    catch (e) { upd({ err: e.message, loading: false }); }
+  }
+
   // tổng ETH ước tính chưa sweep + escrow ETH trên tất cả ví
   const done = results.filter(r => r.res);
   const ethUsd = done.find(r => r.res.ethUsd)?.res.ethUsd;
@@ -63,7 +71,11 @@ export default function Multi() {
       {results.map(r => r.res ? <WalletResult key={r.wallet} res={r.res} /> : (
         <section className="wallet" key={r.wallet}>
           <h2 className="wh">Ví <span className="mono">{r.wallet}</span></h2>
-          {r.loading ? <p className="muted">Đang kiểm tra…</p> : <p className="err">{r.err}</p>}
+          {r.loading ? <p className="muted">Đang kiểm tra…</p> : (
+            <p className="err">{r.err}{' '}
+              <button type="button" className="copy" disabled={loading} onClick={() => recheck(r.wallet)}>Check lại</button>
+            </p>
+          )}
         </section>
       ))}
     </main>
