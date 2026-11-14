@@ -19,10 +19,53 @@ function Copy({ text }) {
   );
 }
 
-function Tx({ title, to, data, fn }) {
+const CHAIN_HEX = '0x1237'; // 4663
+async function ensureChain(eth) {
+  try {
+    await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_HEX }] });
+  } catch (e) {
+    if (e.code !== 4902) throw e;
+    await eth.request({
+      method: 'wallet_addEthereumChain',
+      params: [{
+        chainId: CHAIN_HEX, chainName: 'Robinhood Chain',
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'], blockExplorerUrls: [EXPLORER],
+      }],
+    });
+  }
+}
+
+function SendButton({ wallet, to, data }) {
+  const [state, setState] = useState({ busy: false, hash: '', err: '' });
+  async function send() {
+    const eth = window.ethereum;
+    if (!eth) return setState({ busy: false, hash: '', err: 'Không thấy MetaMask trong trình duyệt' });
+    setState({ busy: true, hash: '', err: '' });
+    try {
+      const [from] = await eth.request({ method: 'eth_requestAccounts' });
+      if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`MetaMask đang chọn ví ${short(from)}, hãy chuyển sang ${short(wallet)}`);
+      await ensureChain(eth);
+      const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to, data, value: '0x0' }] });
+      setState({ busy: false, hash, err: '' });
+    } catch (e) {
+      setState({ busy: false, hash: '', err: e.code === 4001 ? 'Đã huỷ trong MetaMask' : (e.message || String(e)) });
+    }
+  }
+  return (
+    <div>
+      <button type="button" onClick={send} disabled={state.busy}>{state.busy ? 'Đang chờ MetaMask…' : 'Gửi bằng MetaMask'}</button>
+      {state.hash && <a href={`${EXPLORER}/tx/${state.hash}`} target="_blank" rel="noreferrer" className="ok">Đã gửi: {short(state.hash)} ↗</a>}
+      {state.err && <span className="err">{state.err}</span>}
+    </div>
+  );
+}
+
+function Tx({ title, to, data, fn, wallet }) {
   return (
     <div className="tx">
       <strong>{title}</strong> <span className="muted">— {fn}</span>
+      <SendButton wallet={wallet} to={to} data={data} />
       <div><b>To</b><code>{to}</code><Copy text={to} /></div>
       <div><b>Amount</b><code>0</code></div>
       <div><b>Hex data</b><code>{data}</code><Copy text={data} /></div>
@@ -53,6 +96,10 @@ export default function Home() {
     setLoading(false);
   }
 
+  // USD only for native-ETH amounts
+  const usd = (wei, asset) => (asset === zeroAddress && res?.ethUsd)
+    ? (v => ` (~$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: v < 1 ? 4 : 2 })})`)(Number(formatUnits(BigInt(wei || 0), 18)) * res.ethUsd)
+    : '';
   const tokens = res?.tokens || [];
   const okTokens = tokens.filter(t => !t.error);
   const sweeps = okTokens.filter(t => t.sweep?.ok);
@@ -84,7 +131,7 @@ export default function Home() {
                   <strong>{t.name} ({t.symbol})</strong>{' '}
                   <a href={`${EXPLORER}/token/${t.token}`} target="_blank" rel="noreferrer" className="mono">{short(t.token)}</a>
                 </div>
-                <div className="big">≈ {fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}</div>
+                <div className="big">≈ {fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}{usd(t.estimatedCreator, t.quote)}</div>
               </div>
               <div className="kv">
                 <div>Giai đoạn</div><div>{t.phaseName}</div>
@@ -110,7 +157,7 @@ export default function Home() {
           {res.escrow.map(a => (
             <div className="card row" key={a.asset}>
               <div>{a.symbol} {a.asset !== zeroAddress && <span className="mono muted">{short(a.asset)}</span>}</div>
-              <div className="big">{fmt(a.balance, a.decimals)} {a.symbol}</div>
+              <div className="big">{fmt(a.balance, a.decimals)} {a.symbol}{usd(a.balance, a.asset)}</div>
             </div>
           ))}
           <p className="muted">Số ≈ ở mỗi token là ước tính phần creator (creator tax + phần phí gốc sau protocol/buyback) chưa sweep. Escrow gộp phí của mọi token cùng tài sản nên một lần claim rút hết.</p>
@@ -127,10 +174,10 @@ export default function Home() {
                 <li>Nếu MetaMask báo giao dịch có thể thất bại thì dừng lại, kiểm tra lại ví/mạng.</li>
               </ol>
               {sweeps.map((t, i) => (
-                <Tx key={t.token} title={`${i + 1}. Sweep phí ${t.symbol} vào escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} />
+                <Tx key={t.token} title={`${i + 1}. Sweep phí ${t.symbol} vào escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={res.wallet} />
               ))}
               {claimAssets.map((a, i) => (
-                <Tx key={a.asset} title={`${sweeps.length + i + 1}. Claim ${a.symbol} từ escrow về ví`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} />
+                <Tx key={a.asset} title={`${sweeps.length + i + 1}. Claim ${a.symbol} từ escrow về ví`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} wallet={res.wallet} />
               ))}
               <p className="muted">Kiểm tra kết quả: <a href={`${EXPLORER}/address/${res.wallet}?tab=internal_txns`} target="_blank" rel="noreferrer">Internal txns của ví trên Blockscout</a>.</p>
             </div>
