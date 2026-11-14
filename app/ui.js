@@ -50,6 +50,7 @@ const NAV = [
   { href: '/', label: 'Check 1 ví', icon: IconWallet },
   { href: '/multi', label: 'Check nhiều ví', icon: IconWallets },
   { href: '/ca', label: 'Check theo CA', icon: IconCoin },
+  { href: '/launch', label: 'Launch token', icon: IconBolt },
 ];
 
 export function Shell({ children }) {
