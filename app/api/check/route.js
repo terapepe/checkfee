@@ -12,6 +12,6 @@ export async function GET(req) {
   try {
     return Response.json(await checkWallet(wallet));
   } catch (e) {
-    return Response.json({ error: e?.shortMessage || e?.message || String(e) }, { status: 502 });
+    return Response.json({ error: e?.shortMessage || e?.message || String(e), details: e?.details }, { status: 502 });
   }
 }
