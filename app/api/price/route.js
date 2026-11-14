@@ -1,6 +1,6 @@
 export const revalidate = 60;
 
-// ETH/USD spot từ Coinbase
+// ETH/USD spot from Coinbase
 export async function GET() {
   try {
     const r = await fetch('https://api.coinbase.com/v2/prices/ETH-USD/spot', { next: { revalidate: 60 } });

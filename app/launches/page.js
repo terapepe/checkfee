@@ -7,9 +7,9 @@ import { IconBolt } from '../icons';
 
 const TABS = [
   { id: 'mcap', label: 'Market cap' },
-  { id: 'new', label: 'Mới' },
-  { id: 'near', label: 'Sắp graduate' },
-  { id: 'grad', label: 'Đã graduate' },
+  { id: 'new', label: 'New' },
+  { id: 'near', label: 'Near graduation' },
+  { id: 'grad', label: 'Graduated' },
 ];
 
 export default function Launches() {
@@ -50,14 +50,14 @@ export default function Launches() {
         <h1 className="lp-title">Launches</h1>
         <a className="btn-primary" href="/launch"><IconBolt />Launch token</a>
       </div>
-      <p className="muted">Token được tạo trên Ponsfamily thông qua checkfee.</p>
+      <p className="muted">Tokens created on Ponsfamily through CheckFee.</p>
 
-      {!rows && <Spinner text="Đang tổng hợp token từ on-chain…" />}
+      {!rows && <Spinner text="Collecting tokens from on-chain…" />}
       {err && <ErrorLine msg={err} />}
 
       {rows && top.length > 0 && (
         <>
-          <h3>Nổi bật</h3>
+          <h3>Trending</h3>
           <div className="trend">
             {top.map((t, i) => (
               <a key={t.token} href={`/launches/${t.token}`} className="trend-card">
@@ -76,15 +76,15 @@ export default function Launches() {
             {TABS.map(t => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
           </div>
           <div className="lp-table">
-            <div className="lp-row lp-th"><span>Token</span><span>Cặp</span><span>Bonding</span><span>Biểu đồ</span><span>Market cap</span></div>
-            {list.length === 0 && <p className="empty">Chưa có token nào ở mục này.</p>}
+            <div className="lp-row lp-th"><span>Token</span><span>Pair</span><span>Bonding</span><span>Graph</span><span>Market cap</span></div>
+            {list.length === 0 && <p className="empty">No tokens here yet.</p>}
             {list.map(t => (
               <a key={t.token} className="lp-row" href={`/launches/${t.token}`}>
                 <span className="lp-tok">
                   <Logo t={t} />
                   <span>
                     <b>{t.name}</b> <span className="muted">{t.symbol}</span>
-                    <small className="muted"><span className="mono">{short(t.deployer)}</span> · {ago(t.time)} · {t.trades} giao dịch</small>
+                    <small className="muted"><span className="mono">{short(t.deployer)}</span> · {ago(t.time)} · {t.trades} trades</small>
                   </span>
                 </span>
                 <span className="muted">ETH</span>

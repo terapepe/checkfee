@@ -1,4 +1,4 @@
-// Proxy ảnh IPFS qua gateway Pinata riêng (key nằm ở server); CID bất biến nên cache lâu
+// Proxy IPFS images through the dedicated Pinata gateway (key stays on the server); CIDs are immutable so cache long
 const GATEWAY = process.env.PINATA_GATEWAY;
 const KEY = process.env.PINATA_GATEWAY_KEY;
 

@@ -1,4 +1,4 @@
-// Bộ icon SVG nội tuyến (stroke = currentColor)
+// Inline SVG icon set (stroke = currentColor)
 const base = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
 const I = (paths, extra = {}) => props => <svg {...base} {...extra} {...props}>{paths}</svg>;
 
@@ -28,7 +28,7 @@ export const IconSearch = I(<><circle cx="11" cy="11" r="6.5" /><path d="m20 20-
 export const IconBolt = I(<path d="M13 3 5 13.5h6L10 21l8-10.5h-6z" />, { width: 15, height: 15 });
 export const IconPower = I(<><path d="M12 3v8" /><path d="M7 6.3a7 7 0 1 0 10 0" /></>, { width: 15, height: 15 });
 
-// Avatar token: màu suy ra từ địa chỉ, chữ cái đầu của symbol
+// Token avatar: colour derived from the address, initials of the symbol
 export function TokenAvatar({ address, symbol, size = 40 }) {
   const h = parseInt(address.slice(2, 8), 16) % 360;
   const h2 = (h + 60) % 360;

@@ -17,20 +17,20 @@ export default function Home() {
   }
   const check = e => { e.preventDefault(); run(wallet); };
 
-  // kết nối / đổi ví trong MetaMask → tự điền và check ví đó
+  // connect / switch wallet in MetaMask → fill in and check that wallet
   useEffect(() => {
     if (w.account) { setWallet(w.account); run(w.account); }
   }, [w.account]);
 
   return (
     <>
-      <PageHeader icon={IconWallet} title="Check 1 ví" desc="Tìm mọi token Pons v2 ví đã tạo (hoặc được chuyển quyền nhận phí) và số phí creator chưa nhận." />
+      <PageHeader icon={IconWallet} title="Check wallet" desc="Find every Pons v2 token a wallet created (or receives fees for) and its unclaimed creator fees." />
       <form className="search" onSubmit={check}>
         <IconSearch />
-        <input placeholder="0x… địa chỉ ví creator" value={wallet} onChange={e => setWallet(e.target.value)} />
-        <button className="btn-primary" disabled={loading || !wallet.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
+        <input placeholder="0x… creator wallet address" value={wallet} onChange={e => setWallet(e.target.value)} />
+        <button className="btn-primary" disabled={loading || !wallet.trim()}>{loading ? 'Checking…' : 'Check'}</button>
       </form>
-      {!w.account && !res && !loading && <p className="hint">Hoặc bấm <b>Connect Wallet</b> ở thanh bên trái để tự check ví đang dùng.</p>}
+      {!w.account && !res && !loading && <p className="hint">Or click <b>Connect Wallet</b> in the sidebar to check your current wallet.</p>}
       {loading && <Spinner />}
       {err && <ErrorLine msg={err} onRetry={wallet.trim() ? () => run(wallet) : null} disabled={loading} />}
       {res && <WalletResult res={res} />}

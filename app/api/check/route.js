@@ -16,7 +16,7 @@ async function getEthUsd() {
 export async function GET(req) {
   const wallet = new URL(req.url).searchParams.get('wallet')?.trim();
   if (!wallet || !isAddress(wallet, { strict: false })) {
-    return Response.json({ error: 'Địa chỉ ví không hợp lệ' }, { status: 400 });
+    return Response.json({ error: 'Invalid wallet address' }, { status: 400 });
   }
   try {
     const [data, ethUsd] = await Promise.all([checkWallet(wallet), getEthUsd()]);

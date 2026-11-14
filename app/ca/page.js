@@ -15,7 +15,7 @@ export default function ByCA() {
 
   async function run() {
     const { list, bad } = parseAddresses(input);
-    if (bad.length) return setErr(`CA không hợp lệ: ${bad.join(', ')}`);
+    if (bad.length) return setErr(`Invalid CA: ${bad.join(', ')}`);
     setErr(''); setLoading(true); setRes(null);
     try { setRes(await fetchTokens(list)); } catch (e) { setErr(e.message); }
     setLoading(false);
@@ -27,10 +27,10 @@ export default function ByCA() {
 
   return (
     <>
-      <PageHeader icon={IconCoin} title="Check theo CA" desc="Nhập 1 hoặc nhiều contract address token Pons v2 để xem phí chưa nhận và ví được nhận phí của từng token." />
+      <PageHeader icon={IconCoin} title="Check by CA" desc="Enter one or more Pons v2 token contract addresses to see unclaimed fees and each token's fee recipient." />
       <form className="search area" onSubmit={check}>
-        <textarea rows={3} placeholder={'CA token, mỗi dòng một CA\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
-        <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
+        <textarea rows={3} placeholder={'Token CA, one per line\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
+        <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
       </form>
       {loading && <Spinner />}
       {err && <ErrorLine msg={err} onRetry={input.trim() ? run : null} disabled={loading} />}
@@ -39,9 +39,9 @@ export default function ByCA() {
         <>
           <Stats items={[
             { label: 'Token', value: `${ok.length}/${res.tokens.length}` },
-            { label: 'Ví nhận phí', value: res.recipients.length },
-            { label: 'Chờ sweep (ước tính)', value: `${fmt(pending)} ETH` },
-            { label: 'Giá trị', value: res.ethUsd ? fmtUsd(toEth(pending) * res.ethUsd) : '—', accent: true },
+            { label: 'Fee recipients', value: res.recipients.length },
+            { label: 'To sweep (est.)', value: `${fmt(pending)} ETH` },
+            { label: 'Value', value: res.ethUsd ? fmtUsd(toEth(pending) * res.ethUsd) : '—', accent: true },
           ]} />
 
           <h3>Token</h3>
@@ -49,7 +49,7 @@ export default function ByCA() {
             {res.tokens.map(t => <TokenCard key={t.token} t={t} ethUsd={res.ethUsd} mode="ca" />)}
           </div>
 
-          <h3>Theo ví nhận phí <span className="muted">· escrow &amp; claim</span></h3>
+          <h3>By fee recipient <span className="muted">· escrow &amp; claim</span></h3>
           {res.recipients.map(r => (
             <RecipientBlock key={r.wallet} r={r} tokens={ok.filter(t => (t.splitter ? t.splitter.creator : t.creatorFeeRecipient) === r.wallet)} ethUsd={res.ethUsd} />
           ))}

@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { TokenAvatar } from './icons';
-// Biểu đồ SVG nhẹ: sparkline cho danh sách, line + volume cho trang token
+// Lightweight SVG charts: sparkline for lists, line + volume for the token page
 
 export const compact = v => {
   if (v == null || !isFinite(v)) return '—';
@@ -19,7 +19,7 @@ export const priceUsd = v => {
   if (v >= 1) return '$' + v.toFixed(4);
   const s = v.toExponential(2);
   const exp = -parseInt(s.split('e')[1], 10);
-  // nhiều số 0 sau dấu phẩy → dạng $0.0₅320 (chỉ số dưới = số chữ số 0)
+  // many leading zeros → $0.0₅320 (subscript = number of zeros)
   const sub = n => String(n).split('').map(d => '₀₁₂₃₄₅₆₇₈₉'[d]).join('');
   return exp > 4 ? `$0.0${sub(exp - 1)}${(v * 10 ** (exp + 2)).toFixed(0)}` : '$' + v.toFixed(exp + 3);
 };
@@ -44,7 +44,7 @@ export function Sparkline({ points, width = 112, height = 32 }) {
 // trades: [{time, price(USD), usdVol, side}]
 export function PriceChart({ trades, height = 300 }) {
   const W = 760, H = height, PAD = { l: 8, r: 64, t: 10, b: 60 };
-  if (!trades.length) return <div className="chart-empty">Chưa có giao dịch</div>;
+  if (!trades.length) return <div className="chart-empty">No trades yet</div>;
   const t0 = trades[0].time, t1 = trades[trades.length - 1].time || t0 + 1;
   const ps = trades.map(t => t.price);
   const min = Math.min(...ps), max = Math.max(...ps), span = max - min || max || 1;
@@ -79,8 +79,8 @@ export function PriceChart({ trades, height = 300 }) {
         return <rect key={i} x={x(t.time) - 1.5} y={H - 18 - h} width="3" height={h} fill={t.side === 'Buy' ? 'rgba(95,224,160,.45)' : 'rgba(255,122,69,.45)'} />;
       })}
       <circle cx={x(last.time)} cy={y(last.price)} r="3.5" fill={col} />
-      <text x={PAD.l} y={H - 4} fill="var(--muted)" fontSize="11">{new Date(t0 * 1000).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</text>
-      <text x={W - PAD.r} y={H - 4} fill="var(--muted)" fontSize="11" textAnchor="end">{new Date(t1 * 1000).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</text>
+      <text x={PAD.l} y={H - 4} fill="var(--muted)" fontSize="11">{new Date(t0 * 1000).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</text>
+      <text x={W - PAD.r} y={H - 4} fill="var(--muted)" fontSize="11" textAnchor="end">{new Date(t1 * 1000).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</text>
     </svg>
   );
 }

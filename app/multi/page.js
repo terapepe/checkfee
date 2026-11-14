@@ -13,7 +13,7 @@ export default function Multi() {
   const [err, setErr] = useState('');
   const w = useWallet();
 
-  // ví vừa kết nối / đổi trong MetaMask → thêm vào danh sách nếu chưa có
+  // wallet connected / switched in MetaMask → add to the list if missing
   useEffect(() => {
     if (w.account) setInput(v => v.toLowerCase().includes(w.account.toLowerCase()) ? v : (v.trim() ? v.trim() + '\n' : '') + w.account);
   }, [w.account]);
@@ -21,11 +21,11 @@ export default function Multi() {
   async function check(e) {
     e.preventDefault();
     const { list: wallets, bad } = parseAddresses(input);
-    if (bad.length) return setErr(`Địa chỉ không hợp lệ: ${bad.join(', ')}`);
+    if (bad.length) return setErr(`Invalid address: ${bad.join(', ')}`);
     setErr(''); setLoading(true);
     const list = wallets.map(w => ({ wallet: w, res: null, err: '', loading: true }));
     setResults([...list]);
-    // tuần tự để tránh RPC công khai bị rate limit
+    // sequential to avoid public RPC rate limits
     for (let i = 0; i < list.length; i++) {
       try { list[i] = { ...list[i], res: await fetchWallet(list[i].wallet), loading: false }; }
       catch (e) { list[i] = { ...list[i], err: e.message, loading: false }; }
@@ -34,7 +34,7 @@ export default function Multi() {
     setLoading(false);
   }
 
-  // check lại riêng 1 ví bị lỗi
+  // retry a single failed wallet
   async function recheck(wallet) {
     const upd = patch => setResults(rs => rs.map(r => r.wallet === wallet ? { ...r, ...patch } : r));
     upd({ loading: true, err: '' });
@@ -49,25 +49,25 @@ export default function Multi() {
 
   return (
     <>
-      <PageHeader icon={IconWallets} title="Check nhiều ví" desc="Dán danh sách ví, mỗi dòng một ví (hoặc cách nhau bằng dấu phẩy / khoảng trắng). Các ví được check lần lượt." />
+      <PageHeader icon={IconWallets} title="Check multiple wallets" desc="Paste wallets, one per line (or separated by commas / spaces). Wallets are checked one after another." />
       <form className="search area" onSubmit={check}>
         <textarea rows={4} placeholder={'0x…\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
-        <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
+        <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
       </form>
       {err && <ErrorLine msg={err} />}
 
       {results.length > 0 && (
         <>
           <Stats items={[
-            { label: 'Ví', value: `${done.length}/${results.length}` },
+            { label: 'Wallets', value: `${done.length}/${results.length}` },
             { label: 'Token', value: sum.n },
-            { label: 'Chờ sweep + escrow', value: `${fmt(sum.p + sum.e)} ETH` },
-            { label: 'Tổng có thể nhận', value: ethUsd ? fmtUsd(totalEth * ethUsd) : '—', accent: true },
+            { label: 'To sweep + escrow', value: `${fmt(sum.p + sum.e)} ETH` },
+            { label: 'Total claimable', value: ethUsd ? fmtUsd(totalEth * ethUsd) : '—', accent: true },
           ]} />
 
           <div className="card table-wrap">
             <table className="table">
-              <thead><tr><th>Ví</th><th>Token</th><th>Chờ sweep</th><th>Escrow</th><th>USD</th><th /></tr></thead>
+              <thead><tr><th>Wallet</th><th>Tokens</th><th>To sweep</th><th>Escrow</th><th>USD</th><th /></tr></thead>
               <tbody>
                 {results.map(r => {
                   const t = r.res && walletEthTotals(r.res);
@@ -83,11 +83,11 @@ export default function Multi() {
                           <td><a href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small">Blockscout</a></td>
                         </>
                       ) : r.loading ? (
-                        <td colSpan={5}><span className="loading inline"><span className="spin" />Đang kiểm tra…</span></td>
+                        <td colSpan={5}><span className="loading inline"><span className="spin" />Checking…</span></td>
                       ) : (
                         <td colSpan={5}>
                           <span className="err">{r.err}</span>{' '}
-                          <button type="button" className="btn-ghost sm" disabled={loading} onClick={() => recheck(r.wallet)}><IconRefresh />Check lại</button>
+                          <button type="button" className="btn-ghost sm" disabled={loading} onClick={() => recheck(r.wallet)}><IconRefresh />Retry</button>
                         </td>
                       )}
                     </tr>

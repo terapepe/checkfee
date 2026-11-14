@@ -1,5 +1,5 @@
 'use client';
-// Trang nội bộ: deploy CheckfeeSplitterFactory bằng MetaMask (chỉ cần làm 1 lần)
+// Internal page: deploy CheckfeeSplitterFactory with MetaMask (one-time)
 import { useState, Fragment } from 'react';
 import { encodeDeployData } from 'viem';
 import art from '../../../contracts/CheckfeeSplitter.artifacts.json';
@@ -21,7 +21,7 @@ export default function DeployFactory() {
 
   async function deploy() {
     const eth = window.ethereum;
-    if (!eth) return setSt({ err: 'Không thấy MetaMask' });
+    if (!eth) return setSt({ err: 'MetaMask not found' });
     setSt({ busy: true });
     try {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
@@ -33,30 +33,30 @@ export default function DeployFactory() {
       for (let i = 0; i < 60; i++) {
         const r = (await rpc('eth_getTransactionReceipt', [hash])).result;
         if (r) {
-          if (r.status !== '0x1') throw new Error('Giao dịch deploy thất bại');
+          if (r.status !== '0x1') throw new Error('Deploy transaction failed');
           return setSt({ busy: false, hash, addr: r.contractAddress });
         }
         await new Promise(res => setTimeout(res, 2000));
       }
-      setSt({ busy: false, hash, err: 'Chưa thấy receipt, kiểm tra trên Blockscout' });
+      setSt({ busy: false, hash, err: 'No receipt yet, check Blockscout' });
     } catch (e) {
-      setSt({ busy: false, err: e.code === 4001 ? 'Đã huỷ trong MetaMask' : (e.message || String(e)) });
+      setSt({ busy: false, err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.message || String(e)) });
     }
   }
 
   return (
     <>
-      <PageHeader icon={IconBolt} title="Deploy CheckfeeSplitterFactory" desc="Chỉ làm 1 lần. Factory tạo contract chia phí 90% creator / 10% checkfee cho từng ví creator." />
+      <PageHeader icon={IconBolt} title="Deploy CheckfeeSplitterFactory" desc="One-time setup. The factory creates a 90% creator / 10% CheckFee fee splitter per creator wallet." />
       <div className="card">
         <div className="kv" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
           {Object.entries(ARGS).map(([k, v]) => (<Fragment key={k}><span>{k}</span><span className="mono">{v}</span></Fragment>))}
-          <span>Ví đang kết nối</span><span className="mono">{w.account || '—'}</span>
+          <span>Connected wallet</span><span className="mono">{w.account || '—'}</span>
         </div>
         <div style={{ marginTop: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn-primary" onClick={deploy} disabled={st.busy}><IconBolt />{st.busy ? 'Đang deploy…' : 'Deploy bằng MetaMask'}</button>
+          <button className="btn-primary" onClick={deploy} disabled={st.busy}><IconBolt />{st.busy ? 'Deploying…' : 'Deploy with MetaMask'}</button>
           {st.hash && <a className="mono small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 12)}…</a>}
         </div>
-        {st.addr && <p className="ok">Factory: <a className="mono" href={`${EXPLORER}/address/${st.addr}`} target="_blank" rel="noreferrer">{st.addr}</a> — gửi địa chỉ này cho Claude.</p>}
+        {st.addr && <p className="ok">Factory: <a className="mono" href={`${EXPLORER}/address/${st.addr}`} target="_blank" rel="noreferrer">{st.addr}</a> — send this address to Claude.</p>}
         {st.err && <p className="err">{st.err}</p>}
       </div>
     </>

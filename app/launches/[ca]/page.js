@@ -19,7 +19,7 @@ function CopyAddr({ a }) {
 }
 
 async function launchBlockOf(token) {
-  // block của sự kiện TokenLaunched (topic1 = token) – quét ngược tối đa ~30M block
+  // block of the TokenLaunched event (topic1 = token) – scans backwards
   const latest = await client.getBlockNumber();
   for (let to = latest; to > 26_841_846n; to -= 10_000_000n) {
     const from = to - 9_999_999n > 26_841_846n ? to - 9_999_999n : 26_841_846n;
@@ -42,7 +42,7 @@ export default function TokenPage() {
 
   const load = useCallback(async () => {
     try {
-      if (!isAddress(ca || '', { strict: false })) throw new Error('CA không hợp lệ');
+      if (!isAddress(ca || '', { strict: false })) throw new Error('Invalid CA');
       const token = getAddress(ca);
       const lb = await launchBlockOf(token);
       const [sum, px, h, t0] = await Promise.all([
@@ -55,7 +55,7 @@ export default function TokenPage() {
   useEffect(() => { load(); }, [load]);
 
   if (err) return <ErrorLine msg={err} />;
-  if (!s) return <Spinner text="Đang đọc dữ liệu token…" />;
+  if (!s) return <Spinner text="Loading token data…" />;
 
   const px = ethUsd || 0;
   const priceU = s.priceEth != null ? s.priceEth * px : null;
@@ -64,7 +64,7 @@ export default function TokenPage() {
   const rs = RANGES.find(r => r.id === range).s;
   const chartTrades = trades.filter(t => t.time && (!rs || t.time >= now - rs)).map(t => ({ time: t.time, price: t.price * px, usdVol: Number(formatEther(t.eth)) * px, side: t.side }));
   const first = chartTrades[0]?.price, change = first && priceU ? ((priceU - first) / first) * 100 : null;
-  const creatorEarned = trades.reduce((a, t) => a + (t.fee * 7000n) / 10000n + t.tax, 0n); // 70% phí gốc + creator tax
+  const creatorEarned = trades.reduce((a, t) => a + (t.fee * 7000n) / 10000n + t.tax, 0n); // 70% of base fee + creator tax
   const soc = s.socials || {};
   const links = [['X', soc.twitter], ['Telegram', soc.telegram], ['Website', soc.website], ['Discord', soc.discord], ['Farcaster', soc.farcaster]].filter(([, u]) => u);
 
@@ -77,7 +77,7 @@ export default function TokenPage() {
           <h1>{s.name} <span className="muted">{s.symbol}</span></h1>
           <div className="muted small tp-sub">
             by <a className="mono" href={`${EXPLORER}/address/${s.deployer}`} target="_blank" rel="noreferrer">{short(s.deployer)}</a>
-            <span>· {ago(s.time)} trước</span><span>· cặp ETH</span>
+            <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
             <a className="pill" href={`${PONS}/${s.token}`} target="_blank" rel="noreferrer">Pons <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
@@ -86,7 +86,7 @@ export default function TokenPage() {
         <div className="tp-mc">
           <span className="muted small">Market cap</span>
           <b>{s.phase > 0 ? '—' : usdC(mcapU)}</b>
-          <span className="muted small">{priceUsd(priceU)} giá</span>
+          <span className="muted small">{priceUsd(priceU)} price</span>
         </div>
       </div>
 
@@ -101,37 +101,37 @@ export default function TokenPage() {
           <div className="tp-stats">
             <div><span>Market cap</span><b>{s.phase > 0 ? '—' : usdC(mcapU)}</b></div>
             <div><span>Holders</span><b>{holders ? holders.count.toLocaleString('en-US') : '…'}</b></div>
-            <div><span>Giao dịch</span><b>{trades.length.toLocaleString('en-US')}</b></div>
+            <div><span>Trades</span><b>{trades.length.toLocaleString('en-US')}</b></div>
             <div><span>Supply</span><b>1B</b></div>
-            <div><span>Creator kiếm được</span><b>{usdC(Number(formatEther(creatorEarned)) * px)}</b></div>
+            <div><span>Creator earned</span><b>{usdC(Number(formatEther(creatorEarned)) * px)}</b></div>
           </div>
           <div className="tp-stats sm">
             <div><span>Token</span><a className="mono" href={`${EXPLORER}/token/${s.token}`} target="_blank" rel="noreferrer">{short(s.token)}</a></div>
             <div><span>Curve</span><a className="mono" href={`${EXPLORER}/address/${s.curve}`} target="_blank" rel="noreferrer">{short(s.curve)}</a></div>
-            <div><span>Launch</span><b>{s.time ? new Date(s.time * 1000).toLocaleString('vi-VN') : '—'}</b></div>
+            <div><span>Launch</span><b>{s.time ? new Date(s.time * 1000).toLocaleString('en-US') : '—'}</b></div>
             <div><span>Creator tax</span><b>{s.creatorTaxBps / 100}%</b></div>
           </div>
 
           <div className="card tp-bond">
-            <div className="row"><span>Bonding curve</span><b>{s.phase > 0 ? 'Đã graduate' : `${(s.progress * 100).toFixed(2)}%`}</b></div>
+            <div className="row"><span>Bonding curve</span><b>{s.phase > 0 ? 'Graduated' : `${(s.progress * 100).toFixed(2)}%`}</b></div>
             <div className="lp-prog big"><i style={{ width: `${Math.round(s.progress * 100)}%` }} /></div>
-            {s.phase === 0 && <small className="muted">{Number(formatEther(s.realQuote)).toPrecision(3)} / {Number(formatEther(s.threshold))} ETH — đủ ngưỡng sẽ graduate sang Uniswap v4</small>}
+            {s.phase === 0 && <small className="muted">{Number(formatEther(s.realQuote)).toPrecision(3)} / {Number(formatEther(s.threshold))} ETH — graduates to Uniswap v4 at the threshold</small>}
           </div>
 
-          {s.description && (<><h3>Giới thiệu</h3><p className="tp-about">{s.description}</p></>)}
+          {s.description && (<><h3>About</h3><p className="tp-about">{s.description}</p></>)}
 
           <div className="lp-tabs">
-            <button type="button" className={tab === 'trades' ? 'on' : ''} onClick={() => setTab('trades')}>Giao dịch</button>
+            <button type="button" className={tab === 'trades' ? 'on' : ''} onClick={() => setTab('trades')}>Trades</button>
             <button type="button" className={tab === 'holders' ? 'on' : ''} onClick={() => setTab('holders')}>Holders</button>
           </div>
           {tab === 'trades' ? (
             <div className="card table-wrap">
               <table className="table">
-                <thead><tr><th>Loại</th><th>Ví</th><th>ETH</th><th>{s.symbol}</th><th>Giá</th><th>Thời gian</th></tr></thead>
+                <thead><tr><th>Side</th><th>Trader</th><th>ETH</th><th>{s.symbol}</th><th>Price</th><th>Age</th></tr></thead>
                 <tbody>
                   {[...trades].reverse().slice(0, 100).map(t => (
                     <tr key={t.tx + t.logIndex}>
-                      <td className={t.side === 'Buy' ? 'ok' : 'err'}>{t.side === 'Buy' ? 'Mua' : 'Bán'}</td>
+                      <td className={t.side === 'Buy' ? 'ok' : 'err'}>{t.side}</td>
                       <td><a className="mono" href={`${EXPLORER}/address/${t.trader}`} target="_blank" rel="noreferrer">{short(t.trader)}</a></td>
                       <td>{Number(formatEther(t.eth)).toPrecision(3)}</td>
                       <td>{compact(Number(formatUnits(t.tokens, 18)))}</td>
@@ -139,14 +139,14 @@ export default function TokenPage() {
                       <td><a className="muted" href={`${EXPLORER}/tx/${t.tx}`} target="_blank" rel="noreferrer">{ago(t.time)}</a></td>
                     </tr>
                   ))}
-                  {!trades.length && <tr><td colSpan={6} className="muted">Chưa có giao dịch</td></tr>}
+                  {!trades.length && <tr><td colSpan={6} className="muted">No trades yet</td></tr>}
                 </tbody>
               </table>
             </div>
           ) : (
             <div className="card table-wrap">
               <table className="table">
-                <thead><tr><th>#</th><th>Ví</th><th>Số lượng</th><th>%</th></tr></thead>
+                <thead><tr><th>#</th><th>Holder</th><th>Amount</th><th>%</th></tr></thead>
                 <tbody>
                   {(holders?.items || []).map((h, i) => (
                     <tr key={h.address}>
@@ -202,65 +202,65 @@ function TradeBox({ s, account, connect, onDone }) {
 
   async function send() {
     const eth = window.ethereum;
-    setSt({ busy: 'Đang chuẩn bị…', err: '', hash: '' });
+    setSt({ busy: 'Preparing…', err: '', hash: '' });
     try {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
       const minOut = quote.out * (100n - SLIP) / 100n;
       let hash;
       if (side === 'buy') {
-        setSt({ busy: 'Xác nhận mua trong MetaMask…' });
+        setSt({ busy: 'Confirm the buy in MetaMask…' });
         hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.curve, data: buyData(inWei, minOut, from), value: '0x' + inWei.toString(16) }] });
       } else {
         const allow = await tokenAllowance(s.token, from, s.curve);
         if (allow < inWei) {
-          setSt({ busy: 'Bước 1/2: cho phép curve dùng token…' });
+          setSt({ busy: 'Step 1/2: approve the curve to spend tokens…' });
           const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.token, data: approveData(s.curve, inWei), value: '0x0' }] });
           await waitTx(h);
         }
-        setSt({ busy: 'Xác nhận bán trong MetaMask…' });
+        setSt({ busy: 'Confirm the sell in MetaMask…' });
         hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.curve, data: sellData(inWei, minOut, from), value: '0x0' }] });
       }
-      setSt({ busy: 'Đang chờ xác nhận…', hash });
+      setSt({ busy: 'Waiting for confirmation…', hash });
       const rc = await waitTx(hash);
-      if (rc.status !== 'success') throw new Error('Giao dịch thất bại');
+      if (rc.status !== 'success') throw new Error('Transaction failed');
       setSt({ busy: '', err: '', hash }); setAmt(''); onDone?.();
     } catch (e) {
-      setSt({ busy: '', err: e.code === 4001 ? 'Đã huỷ trong MetaMask' : (e.shortMessage || e.message), hash: '' });
+      setSt({ busy: '', err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message), hash: '' });
     }
   }
 
   if (s.phase !== 0) {
     return (
       <div className="card tradebox">
-        <p className="muted">Token đã graduate sang Uniswap v4.</p>
-        <a className="btn-primary big-btn" href={`${PONS}/${s.token}`} target="_blank" rel="noreferrer">Giao dịch trên Pons <IconExternal /></a>
+        <p className="muted">This token has graduated to Uniswap v4.</p>
+        <a className="btn-primary big-btn" href={`${PONS}/${s.token}`} target="_blank" rel="noreferrer">Trade on Pons <IconExternal /></a>
       </div>
     );
   }
   return (
     <div className="card tradebox">
-      <p className="muted small">Giao dịch trực tiếp trên bonding curve của Pons.</p>
+      <p className="muted small">Trades directly against the Pons bonding curve.</p>
       <div className="seg full">
-        <button type="button" className={side === 'buy' ? 'on buy' : ''} onClick={() => { setSide('buy'); setAmt(''); }}>Mua</button>
-        <button type="button" className={side === 'sell' ? 'on sell' : ''} onClick={() => { setSide('sell'); setAmt(''); }}>Bán</button>
+        <button type="button" className={side === 'buy' ? 'on buy' : ''} onClick={() => { setSide('buy'); setAmt(''); }}>Buy</button>
+        <button type="button" className={side === 'sell' ? 'on sell' : ''} onClick={() => { setSide('sell'); setAmt(''); }}>Sell</button>
       </div>
       <div className="tb-in">
-        <span className="muted small">Trả</span>
+        <span className="muted small">Pay</span>
         <div className="tb-row"><input inputMode="decimal" placeholder="0" value={amt} onChange={e => setAmt(e.target.value.replace(',', '.'))} /><b>{side === 'buy' ? 'ETH' : s.symbol}</b></div>
         <div className="tb-pct">{[25, 50, 75, 100].map(p => <button key={p} type="button" onClick={() => pct(p)} disabled={!account}>{p === 100 ? 'Max' : p + '%'}</button>)}</div>
-        {account && <small className="muted">Số dư: {side === 'buy' ? `${Number(formatEther(bal.eth)).toFixed(5)} ETH` : `${compact(Number(formatUnits(bal.tok, 18)))} ${s.symbol}`}</small>}
+        {account && <small className="muted">Balance: {side === 'buy' ? `${Number(formatEther(bal.eth)).toFixed(5)} ETH` : `${compact(Number(formatUnits(bal.tok, 18)))} ${s.symbol}`}</small>}
       </div>
       <div className="tb-out">
-        <span className="muted small">Nhận (ước tính)</span>
+        <span className="muted small">You receive (est.)</span>
         <b>{quote ? (side === 'buy' ? `${compact(Number(formatUnits(quote.out, 18)))} ${s.symbol}` : `${Number(formatEther(quote.out)).toPrecision(4)} ETH`) : '0'}</b>
-        {quote?.snipe > 0 && <small className="warn">Đang trong thời gian snipe tax: {quote.snipe / 100}%</small>}
+        {quote?.snipe > 0 && <small className="warn">Snipe tax window active: {quote.snipe / 100}%</small>}
       </div>
-      <small className="muted">Trượt giá tối đa {SLIP.toString()}% · phí 1% + creator tax {s.creatorTaxBps / 100}%</small>
+      <small className="muted">Max slippage {SLIP.toString()}% · fee 1% + creator tax {s.creatorTaxBps / 100}%</small>
       {account
-        ? <button type="button" className={`btn-primary big-btn ${side}`} disabled={!quote || inWei <= 0n || !!st.busy} onClick={send}>{st.busy || (side === 'buy' ? `Mua ${s.symbol}` : `Bán ${s.symbol}`)}</button>
+        ? <button type="button" className={`btn-primary big-btn ${side}`} disabled={!quote || inWei <= 0n || !!st.busy} onClick={send}>{st.busy || (side === 'buy' ? `Buy ${s.symbol}` : `Sell ${s.symbol}`)}</button>
         : <button type="button" className="btn-primary big-btn" onClick={connect}>Connect Wallet</button>}
-      {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Giao dịch {short(st.hash)} <IconExternal /></a>}
+      {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}
       {st.err && <ErrorLine msg={st.err} />}
     </div>
   );

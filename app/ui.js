@@ -19,7 +19,7 @@ export const fmt = (v, d = 18) => {
 export const toEth = wei => Number(formatUnits(BigInt(wei || 0), 18));
 export const fmtUsd = v => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: v < 1 ? 4 : 2 })}`;
 
-/* ---------------- Ví đang kết nối (dùng chung toàn site) ---------------- */
+/* ---------------- Connected wallet (shared across the site) ---------------- */
 const WalletCtx = createContext({ account: '', connect() {}, disconnect() {} });
 export const useWallet = () => useContext(WalletCtx);
 
@@ -34,7 +34,7 @@ export function WalletProvider({ children }) {
     return () => eth.removeListener?.('accountsChanged', onChange);
   }, []);
   async function connect() {
-    if (!window.ethereum) return alert('Không thấy MetaMask trong trình duyệt');
+    if (!window.ethereum) return alert('MetaMask not found in this browser');
     const a = await window.ethereum.request({ method: 'eth_requestAccounts' }).catch(() => []);
     setAccount(a?.[0] || '');
   }
@@ -45,13 +45,17 @@ export function WalletProvider({ children }) {
   return <WalletCtx.Provider value={{ account, connect, disconnect }}>{children}</WalletCtx.Provider>;
 }
 
-/* ---------------- Khung trang: sidebar trái ---------------- */
+/* ---------------- Page shell: left sidebar ---------------- */
 const NAV = [
-  { href: '/', label: 'Check 1 ví', icon: IconWallet },
-  { href: '/multi', label: 'Check nhiều ví', icon: IconWallets },
-  { href: '/ca', label: 'Check theo CA', icon: IconCoin },
-  { href: '/launches', label: 'Launches', icon: IconWallets },
-  { href: '/launch', label: 'Launch token', icon: IconBolt },
+  { section: 'Create a token', items: [
+    { href: '/launches', label: 'Launches', icon: IconWallets },
+    { href: '/launch', label: 'Launch token', icon: IconBolt },
+  ] },
+  { section: 'Tools', items: [
+    { href: '/', label: 'Check wallet', icon: IconWallet },
+    { href: '/multi', label: 'Check multiple wallets', icon: IconWallets },
+    { href: '/ca', label: 'Check by CA', icon: IconCoin },
+  ] },
 ];
 
 export function Shell({ children }) {
@@ -62,20 +66,24 @@ export function Shell({ children }) {
       <aside className="side">
         <a href="/" className="brand">
           <Logo />
-          <div><b>Pons Fee</b><span>Checker</span></div>
+          <div><b>CheckFee</b><span>v1</span></div>
         </a>
         <nav className="menu">
-          <div className="menu-label">Công cụ</div>
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <a key={href} href={href} className={path === href || (href === '/launches' && path?.startsWith('/launches/')) ? 'on' : ''}><Icon />{label}</a>
+          {NAV.map(({ section, items }) => (
+            <div key={section} className="menu-group">
+              <div className="menu-label">{section}</div>
+              {items.map(({ href, label, icon: Icon }) => (
+                <a key={href} href={href} className={path === href || (href === '/launches' && path?.startsWith('/launches/')) ? 'on' : ''}><Icon />{label}</a>
+              ))}
+            </div>
           ))}
-          <div className="menu-label">Liên kết</div>
+          <div className="menu-label">Links</div>
           <a href="https://ponsfamily.com" target="_blank" rel="noreferrer"><IconExternal width={18} height={18} />Pons Family</a>
           <a href={EXPLORER} target="_blank" rel="noreferrer"><IconExternal width={18} height={18} />Blockscout</a>
         </nav>
         <div className="side-foot">
           {w.account ? (
-            <button type="button" className="wallet-btn on" onClick={w.disconnect} title="Ngắt kết nối">
+            <button type="button" className="wallet-btn on" onClick={w.disconnect} title="Disconnect">
               <span className="dot" /><span className="mono">{short(w.account)}</span><IconPower />
             </button>
           ) : (
@@ -98,7 +106,7 @@ export function PageHeader({ icon: Icon, title, desc }) {
   );
 }
 
-/* ---------------- Nút & giao dịch ---------------- */
+/* ---------------- Buttons & transactions ---------------- */
 function Copy({ text }) {
   const [done, setDone] = useState(false);
   return (
@@ -130,24 +138,24 @@ function SendButton({ wallet, to, data }) {
   const [state, setState] = useState({ busy: false, hash: '', err: '' });
   async function send() {
     const eth = window.ethereum;
-    if (!eth) return setState({ busy: false, hash: '', err: 'Không thấy MetaMask trong trình duyệt' });
+    if (!eth) return setState({ busy: false, hash: '', err: 'MetaMask not found in this browser' });
     setState({ busy: true, hash: '', err: '' });
     try {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
-      if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`MetaMask đang chọn ví ${short(from)}, hãy chuyển sang ${short(wallet)}`);
+      if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`MetaMask is on ${short(from)}, please switch to ${short(wallet)}`);
       await ensureChain(eth);
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to, data, value: '0x0' }] });
       setState({ busy: false, hash, err: '' });
     } catch (e) {
-      setState({ busy: false, hash: '', err: e.code === 4001 ? 'Đã huỷ trong MetaMask' : (e.message || String(e)) });
+      setState({ busy: false, hash: '', err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.message || String(e)) });
     }
   }
   return (
     <div className="send">
       <button type="button" className="btn-primary sm" onClick={send} disabled={state.busy}>
-        <IconBolt />{state.busy ? 'Đang chờ MetaMask…' : 'Gửi bằng MetaMask'}
+        <IconBolt />{state.busy ? 'Waiting for MetaMask…' : 'Send with MetaMask'}
       </button>
-      {state.hash && <a href={`${EXPLORER}/tx/${state.hash}`} target="_blank" rel="noreferrer" className="ok">Đã gửi {short(state.hash)} <IconExternal /></a>}
+      {state.hash && <a href={`${EXPLORER}/tx/${state.hash}`} target="_blank" rel="noreferrer" className="ok">Sent {short(state.hash)} <IconExternal /></a>}
       {state.err && <span className="err">{state.err}</span>}
     </div>
   );
@@ -170,10 +178,10 @@ function Tx({ step, title, to, data, fn, wallet }) {
   );
 }
 
-/* ---------------- Thẻ hiển thị ---------------- */
+/* ---------------- Display cards ---------------- */
 const REASON = {
-  InternalSwapRequiresOperator: 'Cần swap nội bộ (buyback / quy đổi phí token) nên chỉ operator của Pons sweep được. Chờ Pons sweep rồi claim ở escrow.',
-  NotCreatorFeeRecipient: 'Ví này không phải ví nhận phí hiện tại của token.',
+  InternalSwapRequiresOperator: 'Needs an internal swap (buyback / token-fee conversion), so only the Pons operator can sweep. Wait for Pons to sweep, then claim from escrow.',
+  NotCreatorFeeRecipient: 'This wallet is not the current fee recipient of the token.',
 };
 
 export function Stats({ items }) {
@@ -214,33 +222,33 @@ export function TokenCard({ t, ethUsd, mode = 'wallet' }) {
         <div className="tk-amount">
           <span className="badge">{t.phaseName}</span>
           <b>≈ {fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}</b>
-          {t.splitter && <small>phần creator 90%</small>}
+          {t.splitter && <small>creator share 90%</small>}
           {usd && <small>{usd}</small>}
         </div>
       </div>
       <div className="kv">
-        <span>Ví nhận phí</span>
+        <span>Fee recipient</span>
         <span className={mode === 'ca' || t.isRecipient || t.splitter ? '' : 'warn'}>
           <a className="mono" href={`${EXPLORER}/address/${t.creatorFeeRecipient}`} target="_blank" rel="noreferrer">{t.creatorFeeRecipient}</a>
-          {t.splitter ? <em className="tag ok">contract chia phí</em> : mode === 'wallet' && (t.isRecipient ? <em className="tag ok">ví này</em> : <em className="tag warn">ví khác</em>)}
+          {t.splitter ? <em className="tag ok">fee splitter</em> : mode === 'wallet' && (t.isRecipient ? <em className="tag ok">this wallet</em> : <em className="tag warn">other wallet</em>)}
         </span>
         {t.splitter && (
-          <><span>Chia phí 90/10</span><span>
+          <><span>90/10 split</span><span>
             <a className="mono" href={`${EXPLORER}/address/${t.splitter.address}`} target="_blank" rel="noreferrer">{short(t.splitter.address)}</a>
-            <i>creator {short(t.splitter.creator)} · {t.splitter.deployed ? 'đã deploy' : 'deploy ở lần claim đầu'}{BigInt(t.splitter.inEscrow) > 0n ? ` · ${fmt(t.splitter.inEscrow)} ETH đã trong escrow` : ''}</i>
+            <i>creator {short(t.splitter.creator)} · {t.splitter.deployed ? 'deployed' : 'deploys on first claim'}{BigInt(t.splitter.inEscrow) > 0n ? ` · ${fmt(t.splitter.inEscrow)} ETH already in escrow` : ''}</i>
           </span></>
         )}
-        <span>Creator tax chờ sweep</span><span>{fmt(t.pendingCreatorTax, t.quoteDecimals)} {t.quoteSymbol} <i>100% của creator</i></span>
-        <span>Phí gốc chờ sweep</span><span>{fmt(t.pendingBaseFee, t.quoteDecimals)} {t.quoteSymbol} <i>tổng, chia protocol {t.protocolFeeShareBps / 100}%</i></span>
+        <span>Creator tax to sweep</span><span>{fmt(t.pendingCreatorTax, t.quoteDecimals)} {t.quoteSymbol} <i>100% to creator</i></span>
+        <span>Base fee to sweep</span><span>{fmt(t.pendingBaseFee, t.quoteDecimals)} {t.quoteSymbol} <i>total, protocol takes {t.protocolFeeShareBps / 100}%</i></span>
         {t.phase === 2 && BigInt(t.pendingTokenSideFee) > 0n && (
-          <><span>Phí phía token</span><span>{fmt(t.pendingTokenSideFee)} {t.symbol} <i>cần operator quy đổi</i></span></>
+          <><span>Token-side fee</span><span>{fmt(t.pendingTokenSideFee)} {t.symbol} <i>needs operator conversion</i></span></>
         )}
-        <span>Thiết lập</span><span>Creator tax {t.creatorTaxBps / 100}% · buyback {t.buybackEnabled ? 'bật' : 'tắt'}</span>
+        <span>Settings</span><span>Creator tax {t.creatorTaxBps / 100}% · buyback {t.buybackEnabled ? 'on' : 'off'}</span>
         <span>Sweep</span>
         <span>
-          {!t.sweep ? <i>Không có phí chờ sweep</i>
-            : t.sweep.ok ? <span className="ok">{t.splitter ? '1 giao dịch: sweep + claim + chia 90/10, ai gửi cũng được' : mode === 'ca' ? 'Ví nhận phí tự sweep được' : 'Ví này tự sweep được'} (đã giả lập)</span>
-            : <span className="err">{REASON[t.sweep.reason] || `Giả lập thất bại: ${t.sweep.reason}`}</span>}
+          {!t.sweep ? <i>Nothing to sweep</i>
+            : t.sweep.ok ? <span className="ok">{t.splitter ? '1 tx: sweep + claim + 90/10 split, anyone can send it' : mode === 'ca' ? 'Fee recipient can sweep' : 'This wallet can sweep'} (simulated)</span>
+            : <span className="err">{REASON[t.sweep.reason] || `Simulation failed: ${t.sweep.reason}`}</span>}
         </span>
       </div>
     </div>
@@ -257,26 +265,26 @@ function EscrowRow({ a, ethUsd }) {
   );
 }
 
-// Các bước claim cho 1 ví nhận phí
+// Claim steps for one fee recipient
 export function ClaimSteps({ wallet, tokens, escrow }) {
   const sweeps = tokens.filter(t => !t.error && t.sweep?.ok);
   const claimAssets = escrow.filter(a => BigInt(a.balance) > 0n || sweeps.some(t => !t.splitter && t.quote === a.asset));
-  if (!sweeps.length && !claimAssets.length) return <p className="empty">Hiện chưa có gì để claim.</p>;
+  if (!sweeps.length && !claimAssets.length) return <p className="empty">Nothing to claim right now.</p>;
   return (
     <div className="card claim">
-      <p className="muted">Kết nối MetaMask bằng ví <span className="mono">{short(wallet)}</span> rồi bấm lần lượt từng bước, chờ bước trước thành công. Trang sẽ tự chuyển sang mạng Robinhood Chain. Có thể copy To / Hex data để gửi thủ công (MetaMask → Settings → Advanced → Show hex data).</p>
+      <p className="muted">Connect MetaMask with wallet <span className="mono">{short(wallet)}</span> and run the steps in order, waiting for each to confirm. The page switches to Robinhood Chain automatically. You can also copy To / Hex data and send manually (MetaMask → Settings → Advanced → Show hex data).</p>
       {sweeps.map((t, i) => (
-        <Tx key={t.token} step={i + 1} title={t.splitter ? `Claim phí ${t.symbol} (sweep + chia 90/10)` : `Sweep phí ${t.symbol} vào escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
+        <Tx key={t.token} step={i + 1} title={t.splitter ? `Claim ${t.symbol} fees (sweep + 90/10 split)` : `Sweep ${t.symbol} fees into escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
       ))}
       {claimAssets.map((a, i) => (
-        <Tx key={a.asset} step={sweeps.length + i + 1} title={`Claim ${a.symbol} từ escrow về ví`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} wallet={wallet} />
+        <Tx key={a.asset} step={sweeps.length + i + 1} title={`Claim ${a.symbol} from escrow to wallet`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} wallet={wallet} />
       ))}
-      <a className="muted small" href={`${EXPLORER}/address/${wallet}?tab=internal_txns`} target="_blank" rel="noreferrer">Kiểm tra kết quả trên Blockscout <IconExternal /></a>
+      <a className="muted small" href={`${EXPLORER}/address/${wallet}?tab=internal_txns`} target="_blank" rel="noreferrer">Check the result on Blockscout <IconExternal /></a>
     </div>
   );
 }
 
-// tổng ETH (ước tính chưa sweep + escrow) của 1 kết quả ví
+// total ETH (estimated unswept + escrow) for one wallet result
 export function walletEthTotals(res) {
   const pending = res.tokens.filter(t => !t.error && t.quote === zeroAddress).reduce((a, t) => a + BigInt(t.estimatedCreator), 0n);
   const escrow = BigInt(res.escrow.find(a => a.asset === zeroAddress)?.balance || 0);
@@ -294,21 +302,21 @@ export function WalletResult({ res, compact }) {
       </div>
       <Stats items={[
         { label: 'Token', value: res.tokens.length },
-        { label: 'Chờ sweep (ước tính)', value: `${fmt(pending)} ETH` },
+        { label: 'To sweep (est.)', value: `${fmt(pending)} ETH` },
         { label: 'Trong escrow', value: `${fmt(escrow)} ETH` },
-        { label: 'Tổng có thể nhận', value: res.ethUsd ? fmtUsd(total * res.ethUsd) : `${fmt(pending + escrow)} ETH`, accent: true, sub: res.ethUsd ? `ETH ≈ $${res.ethUsd.toLocaleString('en-US')}` : null },
+        { label: 'Total claimable', value: res.ethUsd ? fmtUsd(total * res.ethUsd) : `${fmt(pending + escrow)} ETH`, accent: true, sub: res.ethUsd ? `ETH ≈ $${res.ethUsd.toLocaleString('en-US')}` : null },
       ]} />
 
       <h3>Token</h3>
-      {res.tokens.length === 0 && <p className="empty">Không tìm thấy token Pons v2 nào do ví này tạo hoặc được chuyển quyền nhận phí.</p>}
+      {res.tokens.length === 0 && <p className="empty">No Pons v2 tokens created by, or with fees assigned to, this wallet.</p>}
       <div className={compact ? 'tokens compact' : 'tokens'}>
         {res.tokens.map(t => <TokenCard key={t.token} t={t} ethUsd={res.ethUsd} />)}
       </div>
 
-      <h3>Số dư escrow <span className="muted">· claim được ngay</span></h3>
+      <h3>Escrow balance <span className="muted">· claimable now</span></h3>
       <div className="card">{res.escrow.map(a => <EscrowRow key={a.asset} a={a} ethUsd={res.ethUsd} />)}</div>
 
-      <h3>Claim bằng MetaMask</h3>
+      <h3>Claim with MetaMask</h3>
       <ClaimSteps wallet={res.wallet} tokens={res.tokens} escrow={res.escrow} />
     </section>
   );
@@ -318,12 +326,12 @@ export function RecipientBlock({ r, tokens, ethUsd }) {
   return (
     <section className="result">
       <div className="result-head">
-        <IconWallet /><span className="muted">Ví nhận phí</span>
+        <IconWallet /><span className="muted">Fee recipient</span>
         <a className="mono" href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer">{r.wallet}</a>
         <Copy text={r.wallet} />
       </div>
       <div className="card">{r.escrow.map(a => <EscrowRow key={a.asset} a={a} ethUsd={ethUsd} />)}</div>
-      <p className="muted small">Escrow gộp phí mọi token của ví này (kể cả token không có trong danh sách CA).</p>
+      <p className="muted small">Escrow pools fees from all of this wallet's tokens (including tokens not in the CA list).</p>
       <ClaimSteps wallet={r.wallet} tokens={tokens} escrow={r.escrow} />
     </section>
   );
@@ -333,15 +341,15 @@ export function ErrorLine({ msg, onRetry, disabled }) {
   return (
     <div className="alert">
       <IconAlert /><span>{msg}</span>
-      {onRetry && <button type="button" className="btn-ghost sm" onClick={onRetry} disabled={disabled}><IconRefresh />Check lại</button>}
+      {onRetry && <button type="button" className="btn-ghost sm" onClick={onRetry} disabled={disabled}><IconRefresh />Retry</button>}
     </div>
   );
 }
 
-export const Spinner = ({ text = 'Đang đọc dữ liệu on-chain…' }) => <div className="loading"><span className="spin" />{text}</div>;
+export const Spinner = ({ text = 'Reading on-chain data…' }) => <div className="loading"><span className="spin" />{text}</div>;
 
-/* ---------------- Gọi dữ liệu (chạy trong trình duyệt) ---------------- */
-// Đọc on-chain bằng IP người dùng để RPC công khai không chặn IP server; thử lại khi bị rate limit.
+/* ---------------- Data fetching (runs in the browser) ---------------- */
+// Read on-chain from the user's IP so the public RPC doesn't block the server IP; retry on rate limits.
 let ethUsdCache = null;
 export async function getEthUsd() {
   if (ethUsdCache) return ethUsdCache;
@@ -364,7 +372,7 @@ async function withRetry(fn, tries = 3) {
 }
 
 export function fetchWallet(wallet) {
-  if (!isAddress(wallet, { strict: false })) return Promise.reject(new Error('Địa chỉ ví không hợp lệ'));
+  if (!isAddress(wallet, { strict: false })) return Promise.reject(new Error('Invalid wallet address'));
   return withRetry(() => checkWallet(wallet));
 }
 
