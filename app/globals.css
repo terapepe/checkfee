@@ -23,3 +23,8 @@ ol { padding-left: 20px; line-height: 1.6; }
 a { color: #8ab4ff; }
 .tx > div:first-of-type { margin: 8px 0; }
 .tx a, .tx .err { font-size: 13px; }
+form { align-items: flex-start; }
+textarea { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #2a2f35; background: #16191c; color: inherit; font-family: ui-monospace, monospace; font-size: 14px; resize: vertical; }
+h3 { font-size: 15px; margin: 20px 0 10px; }
+.wallet { border-top: 1px solid #2a2f35; margin-top: 28px; }
+.wh { font-size: 16px; }

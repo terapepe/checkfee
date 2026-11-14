@@ -78,24 +78,7 @@ const REASON = {
   NotCreatorFeeRecipient: 'Ví này không phải ví nhận phí (creatorFeeRecipient) hiện tại của token.',
 };
 
-export default function Home() {
-  const [wallet, setWallet] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [res, setRes] = useState(null);
-  const [err, setErr] = useState('');
-
-  async function check(e) {
-    e.preventDefault();
-    setLoading(true); setErr(''); setRes(null);
-    try {
-      const r = await fetch(`/api/check?wallet=${encodeURIComponent(wallet.trim())}`);
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      setRes(j);
-    } catch (e) { setErr(e.message); }
-    setLoading(false);
-  }
-
+function WalletResult({ res }) {
   // USD only for native-ETH amounts
   const usd = (wei, asset) => (asset === zeroAddress && res?.ethUsd)
     ? (v => ` (~$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: v < 1 ? 4 : 2 })})`)(Number(formatUnits(BigInt(wei || 0), 18)) * res.ethUsd)
@@ -107,19 +90,9 @@ export default function Home() {
     BigInt(a.balance) > 0n || sweeps.some(t => t.quote === a.asset));
 
   return (
-    <main>
-      <h1>Pons Fee Checker</h1>
-      <div className="muted">Pons v2 · Robinhood Chain (4663) · dữ liệu đọc trực tiếp on-chain</div>
-
-      <form onSubmit={check}>
-        <input placeholder="0x… địa chỉ ví creator" value={wallet} onChange={e => setWallet(e.target.value)} />
-        <button disabled={loading || !wallet.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
-      </form>
-      {err && <p className="err">{err}</p>}
-
-      {res && (
-        <>
-          <h2>Token ({tokens.length})</h2>
+    <section className="wallet">
+      <h2 className="wh">Ví <span className="mono">{res.wallet}</span></h2>
+          <h3>Token ({tokens.length})</h3>
           {tokens.length === 0 && <p className="muted">Không tìm thấy token Pons v2 nào do ví này tạo hoặc được chuyển quyền nhận phí.</p>}
 
           {tokens.map(t => t.error ? (
@@ -153,7 +126,7 @@ export default function Home() {
             </div>
           ))}
 
-          <h2>Số dư đã vào escrow (claim được ngay)</h2>
+          <h3>Số dư đã vào escrow (claim được ngay)</h3>
           {res.escrow.map(a => (
             <div className="card row" key={a.asset}>
               <div>{a.symbol} {a.asset !== zeroAddress && <span className="mono muted">{short(a.asset)}</span>}</div>
@@ -162,7 +135,7 @@ export default function Home() {
           ))}
           <p className="muted">Số ≈ ở mỗi token là ước tính phần creator (creator tax + phần phí gốc sau protocol/buyback) chưa sweep. Escrow gộp phí của mọi token cùng tài sản nên một lần claim rút hết.</p>
 
-          <h2>Claim bằng MetaMask</h2>
+          <h3>Claim bằng MetaMask</h3>
           {sweeps.length === 0 && claimAssets.length === 0 ? (
             <p className="muted">Hiện chưa có gì để claim.</p>
           ) : (
@@ -182,8 +155,69 @@ export default function Home() {
               <p className="muted">Kiểm tra kết quả: <a href={`${EXPLORER}/address/${res.wallet}?tab=internal_txns`} target="_blank" rel="noreferrer">Internal txns của ví trên Blockscout</a>.</p>
             </div>
           )}
-        </>
+    </section>
+  );
+}
+
+export default function Home() {
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState([]);
+  const [err, setErr] = useState('');
+
+  async function check(e) {
+    e.preventDefault();
+    const wallets = [...new Set(input.split(/[\s,;]+/).map(w => w.trim().toLowerCase()).filter(Boolean))];
+    const bad = wallets.filter(w => !/^0x[0-9a-f]{40}$/.test(w));
+    if (bad.length) return setErr(`Địa chỉ không hợp lệ: ${bad.join(', ')}`);
+    setErr(''); setLoading(true);
+    const list = wallets.map(w => ({ wallet: w, res: null, err: '', loading: true }));
+    setResults([...list]);
+    // tuần tự để tránh RPC công khai bị rate limit
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const r = await fetch(`/api/check?wallet=${list[i].wallet}`);
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        list[i] = { ...list[i], res: j, loading: false };
+      } catch (e) { list[i] = { ...list[i], err: e.message, loading: false }; }
+      setResults([...list]);
+    }
+    setLoading(false);
+  }
+
+  // tổng ETH ước tính chưa sweep + escrow ETH trên tất cả ví
+  const done = results.filter(r => r.res);
+  const ethUsd = done.find(r => r.res.ethUsd)?.res.ethUsd;
+  const totalWei = done.reduce((s, r) => s
+    + r.res.tokens.filter(t => !t.error && t.quote === zeroAddress).reduce((a, t) => a + BigInt(t.estimatedCreator), 0n)
+    + BigInt(r.res.escrow.find(a => a.asset === zeroAddress)?.balance || 0), 0n);
+  const totalEth = Number(formatUnits(totalWei, 18));
+
+  return (
+    <main>
+      <h1>Pons Fee Checker</h1>
+      <div className="muted">Pons v2 · Robinhood Chain (4663) · dữ liệu đọc trực tiếp on-chain</div>
+
+      <form onSubmit={check}>
+        <textarea rows={4} placeholder="Mỗi dòng một ví 0x… (hoặc cách nhau bằng dấu phẩy / khoảng trắng)" value={input} onChange={e => setInput(e.target.value)} />
+        <button disabled={loading || !input.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
+      </form>
+      {err && <p className="err">{err}</p>}
+
+      {done.length > 1 && (
+        <div className="card row">
+          <div>Tổng {done.length} ví (ETH: ước tính chưa sweep + escrow)</div>
+          <div className="big">≈ {totalEth.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')} ETH{ethUsd ? ` (~$${(totalEth * ethUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : ''}</div>
+        </div>
       )}
+
+      {results.map(r => r.res ? <WalletResult key={r.wallet} res={r.res} /> : (
+        <section className="wallet" key={r.wallet}>
+          <h2 className="wh">Ví <span className="mono">{r.wallet}</span></h2>
+          {r.loading ? <p className="muted">Đang kiểm tra…</p> : <p className="err">{r.err}</p>}
+        </section>
+      ))}
     </main>
   );
 }
