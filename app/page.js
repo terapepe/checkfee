@@ -1,13 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { WalletResult, fetchWallet, Nav, useWallet } from './WalletResult';
+import { WalletResult, fetchWallet, useWallet, PageHeader, ErrorLine, Spinner } from './ui';
+import { IconWallet, IconSearch } from './icons';
 
 export default function Home() {
   const [wallet, setWallet] = useState('');
   const [loading, setLoading] = useState(false);
   const [res, setRes] = useState(null);
   const [err, setErr] = useState('');
-
   const w = useWallet();
 
   async function run(addr) {
@@ -23,21 +23,17 @@ export default function Home() {
   }, [w.account]);
 
   return (
-    <main>
-      <Nav active="one" wallet={w} />
-      <h1>Pons Fee Checker</h1>
-      <div className="muted">Pons v2 · Robinhood Chain (4663) · dữ liệu đọc trực tiếp on-chain</div>
-
-      <form onSubmit={check}>
+    <>
+      <PageHeader icon={IconWallet} title="Check 1 ví" desc="Tìm mọi token Pons v2 ví đã tạo (hoặc được chuyển quyền nhận phí) và số phí creator chưa nhận." />
+      <form className="search" onSubmit={check}>
+        <IconSearch />
         <input placeholder="0x… địa chỉ ví creator" value={wallet} onChange={e => setWallet(e.target.value)} />
-        <button disabled={loading || !wallet.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
+        <button className="btn-primary" disabled={loading || !wallet.trim()}>{loading ? 'Đang kiểm tra…' : 'Kiểm tra'}</button>
       </form>
-      {err && (
-        <p className="err">{err}{' '}
-          {wallet.trim() && <button type="button" className="copy" disabled={loading} onClick={() => run(wallet)}>Check lại</button>}
-        </p>
-      )}
+      {!w.account && !res && !loading && <p className="hint">Hoặc bấm <b>Connect Wallet</b> ở thanh bên trái để tự check ví đang dùng.</p>}
+      {loading && <Spinner />}
+      {err && <ErrorLine msg={err} onRetry={wallet.trim() ? () => run(wallet) : null} disabled={loading} />}
       {res && <WalletResult res={res} />}
-    </main>
+    </>
   );
 }
