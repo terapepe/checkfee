@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { formatUnits, zeroAddress } from 'viem';
+import { formatUnits, zeroAddress, isAddress } from 'viem';
+import { checkWallet } from '../lib/pons';
 
 const EXPLORER = 'https://robinhoodchain.blockscout.com';
 const short = a => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -159,17 +160,25 @@ export function WalletResult({ res }) {
   );
 }
 
-// gọi API, thử lại khi RPC công khai bị rate limit
+// Đọc on-chain ngay trong trình duyệt (IP của người dùng) để không bị RPC công khai
+// chặn IP server Vercel; thử lại khi bị rate limit.
+let ethUsdCache = null;
+async function getEthUsd() {
+  if (ethUsdCache) return ethUsdCache;
+  try {
+    const j = await fetch('/api/price', { cache: 'no-store' }).then(r => r.json());
+    return (ethUsdCache = j.ethUsd || null);
+  } catch { return null; }
+}
+
 export async function fetchWallet(wallet, tries = 3) {
+  if (!isAddress(wallet, { strict: false })) throw new Error('Địa chỉ ví không hợp lệ');
   let last;
   for (let i = 0; i < tries; i++) {
     try {
-      const r = await fetch(`/api/check?wallet=${encodeURIComponent(wallet)}`, { cache: 'no-store' });
-      const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-      if (r.ok) return j;
-      last = new Error(j.error || `HTTP ${r.status}`);
-      if (r.status === 400) throw last;
-    } catch (e) { last = e; if (/không hợp lệ/.test(e.message)) throw e; }
+      const [data, ethUsd] = await Promise.all([checkWallet(wallet), getEthUsd()]);
+      return { ...data, ethUsd };
+    } catch (e) { last = new Error(e?.shortMessage || e?.message || String(e)); }
     await new Promise(r => setTimeout(r, 1500 * (i + 1)));
   }
   throw last;
