@@ -213,15 +213,22 @@ export function TokenCard({ t, ethUsd, mode = 'wallet' }) {
         <div className="tk-amount">
           <span className="badge">{t.phaseName}</span>
           <b>≈ {fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}</b>
+          {t.splitter && <small>phần creator 90%</small>}
           {usd && <small>{usd}</small>}
         </div>
       </div>
       <div className="kv">
         <span>Ví nhận phí</span>
-        <span className={mode === 'ca' || t.isRecipient ? '' : 'warn'}>
+        <span className={mode === 'ca' || t.isRecipient || t.splitter ? '' : 'warn'}>
           <a className="mono" href={`${EXPLORER}/address/${t.creatorFeeRecipient}`} target="_blank" rel="noreferrer">{t.creatorFeeRecipient}</a>
-          {mode === 'wallet' && (t.isRecipient ? <em className="tag ok">ví này</em> : <em className="tag warn">ví khác</em>)}
+          {t.splitter ? <em className="tag ok">contract chia phí</em> : mode === 'wallet' && (t.isRecipient ? <em className="tag ok">ví này</em> : <em className="tag warn">ví khác</em>)}
         </span>
+        {t.splitter && (
+          <><span>Chia phí 90/10</span><span>
+            <a className="mono" href={`${EXPLORER}/address/${t.splitter.address}`} target="_blank" rel="noreferrer">{short(t.splitter.address)}</a>
+            <i>creator {short(t.splitter.creator)} · {t.splitter.deployed ? 'đã deploy' : 'deploy ở lần claim đầu'}{BigInt(t.splitter.inEscrow) > 0n ? ` · ${fmt(t.splitter.inEscrow)} ETH đã trong escrow` : ''}</i>
+          </span></>
+        )}
         <span>Creator tax chờ sweep</span><span>{fmt(t.pendingCreatorTax, t.quoteDecimals)} {t.quoteSymbol} <i>100% của creator</i></span>
         <span>Phí gốc chờ sweep</span><span>{fmt(t.pendingBaseFee, t.quoteDecimals)} {t.quoteSymbol} <i>tổng, chia protocol {t.protocolFeeShareBps / 100}%</i></span>
         {t.phase === 2 && BigInt(t.pendingTokenSideFee) > 0n && (
@@ -231,7 +238,7 @@ export function TokenCard({ t, ethUsd, mode = 'wallet' }) {
         <span>Sweep</span>
         <span>
           {!t.sweep ? <i>Không có phí chờ sweep</i>
-            : t.sweep.ok ? <span className="ok">{mode === 'ca' ? 'Ví nhận phí tự sweep được' : 'Ví này tự sweep được'} (đã giả lập)</span>
+            : t.sweep.ok ? <span className="ok">{t.splitter ? '1 giao dịch: sweep + claim + chia 90/10, ai gửi cũng được' : mode === 'ca' ? 'Ví nhận phí tự sweep được' : 'Ví này tự sweep được'} (đã giả lập)</span>
             : <span className="err">{REASON[t.sweep.reason] || `Giả lập thất bại: ${t.sweep.reason}`}</span>}
         </span>
       </div>
@@ -252,13 +259,13 @@ function EscrowRow({ a, ethUsd }) {
 // Các bước claim cho 1 ví nhận phí
 export function ClaimSteps({ wallet, tokens, escrow }) {
   const sweeps = tokens.filter(t => !t.error && t.sweep?.ok);
-  const claimAssets = escrow.filter(a => BigInt(a.balance) > 0n || sweeps.some(t => t.quote === a.asset));
+  const claimAssets = escrow.filter(a => BigInt(a.balance) > 0n || sweeps.some(t => !t.splitter && t.quote === a.asset));
   if (!sweeps.length && !claimAssets.length) return <p className="empty">Hiện chưa có gì để claim.</p>;
   return (
     <div className="card claim">
       <p className="muted">Kết nối MetaMask bằng ví <span className="mono">{short(wallet)}</span> rồi bấm lần lượt từng bước, chờ bước trước thành công. Trang sẽ tự chuyển sang mạng Robinhood Chain. Có thể copy To / Hex data để gửi thủ công (MetaMask → Settings → Advanced → Show hex data).</p>
       {sweeps.map((t, i) => (
-        <Tx key={t.token} step={i + 1} title={`Sweep phí ${t.symbol} vào escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
+        <Tx key={t.token} step={i + 1} title={t.splitter ? `Claim phí ${t.symbol} (sweep + chia 90/10)` : `Sweep phí ${t.symbol} vào escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
       ))}
       {claimAssets.map((a, i) => (
         <Tx key={a.asset} step={sweeps.length + i + 1} title={`Claim ${a.symbol} từ escrow về ví`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} wallet={wallet} />

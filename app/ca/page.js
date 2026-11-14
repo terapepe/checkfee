@@ -51,7 +51,7 @@ export default function ByCA() {
 
           <h3>Theo ví nhận phí <span className="muted">· escrow &amp; claim</span></h3>
           {res.recipients.map(r => (
-            <RecipientBlock key={r.wallet} r={r} tokens={ok.filter(t => t.creatorFeeRecipient === r.wallet)} ethUsd={res.ethUsd} />
+            <RecipientBlock key={r.wallet} r={r} tokens={ok.filter(t => (t.splitter ? t.splitter.creator : t.creatorFeeRecipient) === r.wallet)} ethUsd={res.ethUsd} />
           ))}
         </>
       )}
