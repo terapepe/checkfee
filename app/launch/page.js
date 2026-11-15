@@ -48,7 +48,7 @@ export default function Launch() {
     try {
       const d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
       if (d) {
-        if (d.f) setF(v => ({ ...v, ...d.f }));
+        if (d.f) setF(v => ({ ...v, ...d.f, payout: '' }));
         if (d.pf) setPf(d.pf);
         if (CHAINS[d.net]) setNet(d.net);
         if (d.uri) setImg({ file: null, preview: `/api/ipfs/${d.uri.replace('ipfs://', '')}`, uri: d.uri, uploading: false });
@@ -58,7 +58,7 @@ export default function Launch() {
   }, []);
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem(DRAFT, JSON.stringify({ f, pf, net, uri: img.uri })); } catch {}
+    try { localStorage.setItem(DRAFT, JSON.stringify({ f: { ...f, payout: '' }, pf, net, uri: img.uri })); } catch {}
   }, [f, pf, net, img.uri, loaded]);
 
   const [credits, setCredits] = useState(null); // null = loading
@@ -72,7 +72,6 @@ export default function Launch() {
   }, [w.account, chainId]);
   const free = credits != null && credits > 0;
   const serviceFee = free ? 0n : CHECKFEE_LAUNCH_FEE;
-  useEffect(() => { if (w.account) setF(v => (v.payout ? v : { ...v, payout: w.account })); }, [w.account]);
 
   async function pickImage(e) {
     const file = e.target.files?.[0];
@@ -94,7 +93,8 @@ export default function Launch() {
   try { quoteIn = f.buy ? parseEther(String(f.buy)) : 0n; } catch {}
   const total = info ? info.launchFee + quoteIn + serviceFee : null;
   const holders = !isC && f.dest === 'holders';
-  const payoutOk = holders || isAddress(f.payout || '', { strict: false });
+  // empty fee wallet = the connected wallet
+  const payoutOk = holders || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
   const lim = LIMIT[pf];
   const lenOk = f.name.trim().length <= lim.name && f.symbol.length <= lim.symbol;
   const feeOk = !(isC && Number(f.fee) < 1);
@@ -107,11 +107,12 @@ export default function Launch() {
       const eth = window.ethereum;
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await switchChain(eth, chainId);
+      const form = { ...f, payout: f.payout.trim() || from };
       // simulate the launch first so no fee is charged for a launch that would fail
       if (isC) setSt({ step: `Preparing ${PL} launch…` });
       // contractURI JSON (image, description, links) — o1 shows the token from it
-      const contractURI = isC ? await pinContractMeta(contractMeta(f, img.uri)) : '';
-      const tx = isC ? await buildTaxTx(pf, chainId, { account: from, form: f, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
+      const contractURI = isC ? await pinContractMeta(contractMeta(form, img.uri)) : '';
+      const tx = isC ? await buildTaxTx(pf, chainId, { account: from, form, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form, logo: img.uri, quoteIn });
       // unused credit (fee paid, not yet launched) → don't charge again
       const left = await launchCredits(from, chainId);
       if (left > 0) {
@@ -180,7 +181,7 @@ export default function Launch() {
             </div>
           </div>
           <div className="kv">
-            <span>Creator fee wallet</span><span className="mono">{f.payout}</span>
+            <span>Creator fee wallet</span><span className="mono">{f.payout || w.account}</span>
           </div>
         </div>
         <p className="hint"><a href="/launch" onClick={() => location.reload()}>← Launch another token</a></p>
@@ -246,8 +247,8 @@ export default function Launch() {
             </fieldset>
           )}
           {!holders && <>
-            <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
-            <p className="muted small">{isC ? 'Receives the creator share of the trading fee (in ETH), claimable on the token page.' : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Defaults to the connected wallet.</p>
+            <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder={w.account ? `Connected wallet (${short(w.account)})` : 'Connected wallet'} /></label>
+            <p className="muted small">{isC ? 'Receives the creator share of the trading fee (in ETH), claimable on the token page.' : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Leave empty to use the connected wallet; paste an address only to send fees elsewhere.</p>
           </>}
           <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
