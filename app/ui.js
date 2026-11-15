@@ -81,6 +81,8 @@ export function Shell({ children }) {
           <div className="menu-label">Links</div>
           <a href="https://ponsfamily.com" target="_blank" rel="noreferrer"><IconExternal width={18} height={18} />Pons Family</a>
           <a href={EXPLORER} target="_blank" rel="noreferrer"><IconExternal width={18} height={18} />Blockscout</a>
+          <a href="https://www.clanker.world/clankers/chain/robinhood" target="_blank" rel="noreferrer"><IconExternal width={18} height={18} />Clanker</a>
+          <a href="https://across.to/?from=base&inputToken=ETH&to=robinhood&outputToken=ETH" target="_blank" rel="noreferrer" title="Bridge ETH from Base to Robinhood Chain"><IconExternal width={18} height={18} />Across bridge</a>
         </nav>
         <div className="side-foot">
           {w.account ? (
