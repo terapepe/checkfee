@@ -10,6 +10,12 @@ import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
 import { readClankerInfo, buildClankerTx, parseClankerLaunch, clankerUrl, CLANKER_FEE_PCT } from '../../lib/clanker';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker' };
+const DRAFT = 'checkfee_launch_draft';
+// ticker: A-Z 0-9 only, uppercase, ≤30 · name: letters/digits/spaces only, <100
+const CLEAN = {
+  symbol: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30),
+  name: v => v.replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 99),
+};
 
 const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', taxBps: 0, buyback: false, buy: '' };
 
@@ -21,7 +27,25 @@ export default function Launch() {
   const [pf, setPf] = useState('pons');
   const isC = pf === 'clanker';
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
-  const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+  const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : CLEAN[k] ? CLEAN[k](e.target.value) : e.target.value }));
+
+  // draft: restore once, then save on every change until the token is launched
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+      if (d) {
+        if (d.f) setF(v => ({ ...v, ...d.f }));
+        if (d.pf) setPf(d.pf);
+        if (d.uri) setImg({ file: null, preview: `/api/ipfs/${d.uri.replace('ipfs://', '')}`, uri: d.uri, uploading: false });
+      }
+    } catch {}
+    setLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    try { localStorage.setItem(DRAFT, JSON.stringify({ f, pf, uri: img.uri })); } catch {}
+  }, [f, pf, img.uri, loaded]);
 
   const [credits, setCredits] = useState(null); // null = loading
   useEffect(() => {
@@ -86,6 +110,7 @@ export default function Launch() {
       const rc = await waitReceipt(hash);
       if (rc.status !== 'success') throw new Error('Launch transaction failed');
       clearFeePaid(from);
+      try { localStorage.removeItem(DRAFT); } catch {}
       const L = isC ? parseClankerLaunch(rc.logs) : parseLaunch(rc.logs);
       if (L?.token) { location.href = isC ? clankerUrl(L.token) : `/launches/${L.token}`; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
@@ -138,8 +163,8 @@ export default function Launch() {
               {img.uri && <em className="badge">IPFS ✓</em>}
             </label>
             <div className="lf-col">
-              <label><L icon={IconTag}>Token name</L><input value={f.name} onChange={set('name')} maxLength={32} placeholder="NEXT AI" required /></label>
-              <label><L icon={IconHash}>Ticker</L><input value={f.symbol} onChange={set('symbol')} maxLength={10} placeholder="NEXT" required /></label>
+              <label><L icon={IconTag}>Token name</L><input value={f.name} onChange={set('name')} maxLength={99} placeholder="NEXT AI" required /></label>
+              <label><L icon={IconHash}>Ticker</L><input value={f.symbol} onChange={set('symbol')} maxLength={30} placeholder="NEXT" required /></label>
             </div>
           </div>
           <label><L icon={IconText}>Description</L><textarea rows={3} value={f.description} onChange={set('description')} maxLength={500} /></label>
