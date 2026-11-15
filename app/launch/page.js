@@ -7,6 +7,9 @@ import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, Icon
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
+import { readClankerInfo, buildClankerTx, parseClankerLaunch, clankerUrl, CLANKER_FEE_PCT } from '../../lib/clanker';
+
+const PLATFORMS = { pons: 'Pons', clanker: 'Clanker' };
 
 const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', taxBps: 0, buyback: false, buy: '' };
 
@@ -15,11 +18,16 @@ export default function Launch() {
   const [f, setF] = useState(EMPTY);
   const [img, setImg] = useState({ file: null, preview: '', uri: '', uploading: false });
   const [info, setInfo] = useState(null);
+  const [pf, setPf] = useState('pons');
+  const isC = pf === 'clanker';
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
   const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
   const [credits, setCredits] = useState(null); // null = loading
-  useEffect(() => { readLaunchInfo(w.account).then(setInfo).catch(() => {}); }, [w.account]);
+  useEffect(() => {
+    setInfo(null);
+    (isC ? readClankerInfo() : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
+  }, [w.account, pf]);
   useEffect(() => {
     setCredits(null);
     if (w.account) launchCredits(w.account).then(setCredits).catch(() => setCredits(0));
@@ -58,7 +66,8 @@ export default function Launch() {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
       // simulate the launch first so no fee is charged for a launch that would fail
-      const tx = await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
+      if (isC) setSt({ step: 'Preparing Clanker launch…' });
+      const tx = isC ? await buildClankerTx({ account: from, form: f, image: img.uri, quoteIn }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
       // unused credit (fee paid, not yet launched) → don't charge again
       const left = await launchCredits(from);
       if (left > 0) {
@@ -77,8 +86,8 @@ export default function Launch() {
       const rc = await waitReceipt(hash);
       if (rc.status !== 'success') throw new Error('Launch transaction failed');
       clearFeePaid(from);
-      const L = parseLaunch(rc.logs);
-      if (L?.token) { location.href = `/launches/${L.token}`; return; } // go straight to the token page
+      const L = isC ? parseClankerLaunch(rc.logs) : parseLaunch(rc.logs);
+      if (L?.token) { location.href = isC ? clankerUrl(L.token) : `/launches/${L.token}`; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
     } catch (er) {
       setSt(s => ({ ...s, step: '', err: er.code === 4001 ? 'Cancelled in MetaMask' : (er.shortMessage || er.message || String(er)) }));
@@ -112,7 +121,12 @@ export default function Launch() {
 
   return (
     <>
-      <PageHeader icon={IconBolt} title="Launch token" desc="Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost." />
+      <PageHeader icon={IconBolt} title="Launch token" desc={isC
+        ? `Create a token on Clanker (Uniswap v4, ETH pair). ${CLANKER_FEE_PCT}% buy/sell fee; your share goes straight to your fee wallet.`
+        : 'Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost.'} />
+      <div className="seg" style={{ marginBottom: 16 }}>
+        {Object.entries(PLATFORMS).map(([k, v]) => <button key={k} type="button" className={pf === k ? 'on' : ''} onClick={() => setPf(k)} disabled={!!st.step}>{v}</button>)}
+      </div>
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
           <h3 className="sec"><IconLayers />Token details</h3>
@@ -141,20 +155,21 @@ export default function Launch() {
         <div className="card lf">
           <h3 className="sec"><IconCoin width={16} height={16} />Fees &amp; first buy</h3>
           <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
+          {isC ? <p className="muted small">This wallet receives the creator share of the {CLANKER_FEE_PCT}% buy/sell fee (paid in ETH), claimable on clanker.world. Defaults to the connected wallet.</p> : <>
           <p className="muted small">This wallet receives 70% of the base trading fee + 100% of the creator tax, claimable directly on the Check pages. Defaults to the connected wallet.</p>
           <label><L icon={IconPercent}>Creator tax: <b>{f.taxBps / 100}%</b></L>
             <input type="range" min={0} max={info?.maxTaxBps ?? 1000} step={50} value={f.taxBps} onChange={set('taxBps')} />
           </label>
-          <label className="check"><input type="checkbox" checked={f.buyback} onChange={set('buyback')} /><IconRecycle className="ic" /> Enable buyback (part of creator fees buys back the token, vested over 5 years)</label>
+          <label className="check"><input type="checkbox" checked={f.buyback} onChange={set('buyback')} /><IconRecycle className="ic" /> Enable buyback (part of creator fees buys back the token, vested over 5 years)</label></>}
           <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
           <div className="sum">
-            <div><span className="lbl"><IconSpark />Ponsfamily token creation fee</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconSpark />{isC ? 'Clanker token creation fee' : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span className="lbl"><IconCart />First buy</span><b>{fmt(quoteIn)} ETH</b></div>
             <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
             <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
-          {info && !info.canLaunch && <ErrorLine msg="Pons currently only allows whitelisted wallets to launch." />}
+          {info && !info.canLaunch && <ErrorLine msg={isC ? 'Clanker launches are currently closed.' : 'Pons currently only allows whitelisted wallets to launch.'} />}
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
           <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || 'Launch with MetaMask'}</button>
           {st.hash && <a className="mono small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
