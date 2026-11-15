@@ -19,7 +19,9 @@ const FACTORIES = {
 const isAddr = a => /^0x[0-9a-fA-F]{40}$/.test(a || '');
 const isHash = h => /^0x[0-9a-fA-F]{64}$/.test(h || '');
 
-export async function GET() {
+export async function GET(req) {
+  // /api/launches?status → is the write key configured on the server?
+  if (new URL(req.url).searchParams.has('status')) return Response.json({ canRecord: !!SB_KEY });
   const r = await fetch(`${TABLE}?select=chain_id,token,platform,pool_id,curve,deployer,block,tx_hash&order=block.desc&limit=5000`, { headers: { apikey: SB_READ }, cache: 'no-store' });
   if (!r.ok) return Response.json({ error: `Supabase HTTP ${r.status}` }, { status: 502 });
   return Response.json(await r.json(), { headers: { 'cache-control': 'public, s-maxage=15, stale-while-revalidate=60' } });
