@@ -406,3 +406,5 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
   .ck-total { text-align: left; }
   .ck-table th:nth-child(3), .ck-table td:nth-child(3) { display: none; }
 }
+.pill-btn { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font: inherit; background: rgba(200, 245, 63, .1); color: var(--accent); border-color: rgba(200, 245, 63, .45); }
+.pill-btn svg { width: 12px; height: 12px; }

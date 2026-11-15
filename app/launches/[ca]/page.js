@@ -12,6 +12,7 @@ import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck, ChainBadge } from '../../icons';
 import { taxPlatformOf } from '../../../lib/tax';
 import TaxTokenPage from './tax';
+import { CopyTokenButton } from '../../copy-token';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
 
@@ -95,6 +96,7 @@ function PonsTokenPage() {
             by <a className="mono" href={`${EXPLORER}/address/${s.deployer}`} target="_blank" rel="noreferrer">{short(s.deployer)}</a>
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
+            <CopyTokenButton pf="pons" t={{ ...s, image: s.logoUri, fee: s.creatorTaxBps / 100 }} />
             <a className="pill" href={`${PONS}/${s.token}`} target="_blank" rel="noreferrer">Pons <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>

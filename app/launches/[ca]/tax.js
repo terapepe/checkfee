@@ -8,6 +8,7 @@ import { TAX, taxUrl, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx
 import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck, ChainBadge } from '../../icons';
+import { CopyTokenButton } from '../../copy-token';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
 
@@ -64,6 +65,7 @@ export default function TaxTokenPage({ pf, chainId, token }) {
             by <a className="mono" href={`${EXPLORER}/address/${s.deployer}`} target="_blank" rel="noreferrer">{short(s.deployer)}</a>
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
+            <CopyTokenButton pf={pf} chainId={chainId} t={{ ...s, fee: s.buyTax }} />
             <a className="pill" href={url(s.token)} target="_blank" rel="noreferrer">{P.label} <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>
