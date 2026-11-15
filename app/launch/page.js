@@ -5,7 +5,7 @@ import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt } from '..
 import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, IconText, IconAt, IconSend, IconGlobe, IconChat, IconArch, IconWallet, IconPercent, IconRecycle, IconCart, IconReceipt, IconLayers, IconCoin, IconSpark } from '../icons';
 
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
-import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
+import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET, CHECKFEE_FEE_ON } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
@@ -67,6 +67,7 @@ export default function Launch() {
     (isC ? readTaxInfo(pf, chainId) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
   }, [w.account, pf, chainId]);
   useEffect(() => {
+    if (!CHECKFEE_FEE_ON) return setCredits(Infinity); // service fee off: every launch is free
     setCredits(null);
     if (w.account) launchCredits(w.account, chainId).then(setCredits).catch(() => setCredits(0));
   }, [w.account, chainId]);
@@ -114,7 +115,7 @@ export default function Launch() {
       const contractURI = isC ? await pinContractMeta(contractMeta(form, img.uri)) : '';
       const tx = isC ? await buildTaxTx(pf, chainId, { account: from, form, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form, logo: img.uri, quoteIn });
       // unused credit (fee paid, not yet launched) → don't charge again
-      const left = await launchCredits(from, chainId);
+      const left = CHECKFEE_FEE_ON ? await launchCredits(from, chainId) : Infinity;
       if (left > 0) {
         setSt({ step: 'Confirm the launch in MetaMask…' });
       } else {
@@ -255,7 +256,7 @@ export default function Launch() {
           <div className="sum">
             <div><span className="lbl"><IconSpark />{isC ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span className="lbl"><IconCart />First buy</span><b>{fmt(quoteIn)} ETH</b></div>
-            <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
+            {CHECKFEE_FEE_ON && <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>}
             <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg={isC ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
