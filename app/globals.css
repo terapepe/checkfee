@@ -310,3 +310,12 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
 .toggle:has(input:checked) { color: var(--text); }
 .claim-all { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; background: rgba(200, 245, 63, .06); border: 1px solid rgba(200, 245, 63, .2); }
 .claim-all small { flex-basis: 100%; }
+.stat .claim-all { margin-top: 10px; padding: 0; background: none; border: 0; flex-direction: column; align-items: stretch; gap: 6px; }
+.stat .claim-all .btn-primary { justify-content: center; }
+.result-head .claim-all { margin-left: auto; padding: 0; background: none; border: 0; }
+.info-fold { margin-top: 22px; }
+.info-fold > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); font-size: 13.5px; }
+.info-fold > summary::-webkit-details-marker { display: none; }
+.info-fold > summary svg { color: var(--accent); }
+.info-fold > summary:hover { border-color: var(--accent); }
+.info-fold[open] > summary { margin-bottom: 12px; }

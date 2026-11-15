@@ -66,3 +66,4 @@ export const IconCart = I(<><path d="M3 4h2.5l2.2 11h10.6L20.5 8H7" /><circle cx
 export const IconReceipt = I(<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>, S);
 export const IconSpark = I(<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" />, S);
 export const IconLayers = I(<><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></>, S);
+export const IconInfo = I(<><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>, { width: 16, height: 16 });

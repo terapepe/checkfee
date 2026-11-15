@@ -5,7 +5,7 @@ import { formatUnits, zeroAddress, isAddress } from 'viem';
 import { checkWallet, checkTokens } from '../lib/pons';
 import {
   Logo, IconWallet, IconWallets, IconCoin, IconExternal, IconCopy, IconCheck,
-  IconAlert, IconRefresh, IconBolt, IconPower, TokenAvatar,
+  IconAlert, IconRefresh, IconBolt, IconPower, TokenAvatar, IconInfo,
 } from './icons';
 
 export const EXPLORER = 'https://robinhoodchain.blockscout.com';
@@ -189,7 +189,7 @@ export function Stats({ items }) {
     <div className="stats">
       {items.map(s => (
         <div className="stat" key={s.label}>
-          <span>{s.label}</span><b className={s.accent ? 'accent' : ''}>{s.value}</b>{s.sub && <small>{s.sub}</small>}
+          <span>{s.label}</span><b className={s.accent ? 'accent' : ''}>{s.value}</b>{s.sub && <small>{s.sub}</small>}{s.action}
         </div>
       ))}
     </div>
@@ -313,34 +313,39 @@ function ClaimAll({ wallet, calls }) {
     }
   }
   return (
-    <div className="claim-all">
-      <button type="button" className="btn-primary" onClick={run} disabled={!!st.busy}><IconBolt />{st.busy || `Claim all (${calls.length} steps in one click)`}</button>
+    <div className="claim-all" title="One MetaMask confirmation when your wallet supports batched calls on this chain; otherwise each step is sent automatically.">
+      <button type="button" className="btn-primary" onClick={run} disabled={!!st.busy}><IconBolt />{st.busy || (calls.length > 1 ? `Claim all (${calls.length} steps)` : 'Claim')}</button>
       {st.done && <span className="ok small">Done{st.done.startsWith('0x') && <> · <a href={`${EXPLORER}/tx/${st.done}`} target="_blank" rel="noreferrer">tx <IconExternal /></a></>}</span>}
       {st.err && <span className="err small">{st.err}</span>}
-      <small className="muted">Uses a single MetaMask confirmation when your wallet supports batched calls on this chain; otherwise sends each step automatically.</small>
     </div>
   );
 }
 
-// Claim steps for one fee recipient
-export function ClaimSteps({ wallet, tokens, escrow }) {
+export function claimPlan(tokens, escrow) {
   const sweeps = tokens.filter(t => !t.error && t.sweep?.ok);
   const claimAssets = escrow.filter(a => BigInt(a.balance) > 0n || sweeps.some(t => !t.splitter && t.quote === a.asset));
-  if (!sweeps.length && !claimAssets.length) return <p className="empty">Nothing to claim right now.</p>;
+  const calls = [...sweeps.map(t => ({ to: t.sweep.to, data: t.sweep.data })), ...claimAssets.map(a => ({ to: a.claim.to, data: a.claim.data }))];
+  return { sweeps, claimAssets, calls };
+}
+
+// Manual claim steps for one fee recipient (collapsed behind an info toggle)
+export function ClaimSteps({ wallet, tokens, escrow }) {
+  const { sweeps, claimAssets } = claimPlan(tokens, escrow);
+  if (!sweeps.length && !claimAssets.length) return null;
   return (
-    <div className="card claim">
-      <p className="muted">Connect MetaMask with wallet <span className="mono">{short(wallet)}</span> and run the steps in order, waiting for each to confirm. The page switches to Robinhood Chain automatically. You can also copy To / Hex data and send manually (MetaMask → Settings → Advanced → Show hex data).</p>
-      {sweeps.length + claimAssets.length > 1 && (
-        <ClaimAll wallet={wallet} calls={[...sweeps.map(t => ({ to: t.sweep.to, data: t.sweep.data })), ...claimAssets.map(a => ({ to: a.claim.to, data: a.claim.data }))]} />
-      )}
-      {sweeps.map((t, i) => (
-        <Tx key={t.token} step={i + 1} title={t.splitter ? `Claim ${t.symbol} fees (sweep + 90/10 split)` : `Sweep ${t.symbol} fees into escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
-      ))}
-      {claimAssets.map((a, i) => (
-        <Tx key={a.asset} step={sweeps.length + i + 1} title={`Claim ${a.symbol} from escrow to wallet`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} wallet={wallet} />
-      ))}
-      <a className="muted small" href={`${EXPLORER}/address/${wallet}?tab=internal_txns`} target="_blank" rel="noreferrer">Check the result on Blockscout <IconExternal /></a>
-    </div>
+    <details className="info-fold">
+      <summary><IconInfo />Claim with MetaMask <span className="muted">· manual steps</span></summary>
+      <div className="card claim">
+        <p className="muted">Connect MetaMask with wallet <span className="mono">{short(wallet)}</span> and run the steps in order, waiting for each to confirm. The page switches to Robinhood Chain automatically. You can also copy To / Hex data and send manually (MetaMask → Settings → Advanced → Show hex data).</p>
+        {sweeps.map((t, i) => (
+          <Tx key={t.token} step={i + 1} title={t.splitter ? `Claim ${t.symbol} fees (sweep + 90/10 split)` : `Sweep ${t.symbol} fees into escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
+        ))}
+        {claimAssets.map((a, i) => (
+          <Tx key={a.asset} step={sweeps.length + i + 1} title={`Claim ${a.symbol} from escrow to wallet`} to={a.claim.to} data={a.claim.data} fn={a.claim.fn} wallet={wallet} />
+        ))}
+        <a className="muted small" href={`${EXPLORER}/address/${wallet}?tab=internal_txns`} target="_blank" rel="noreferrer">Check the result on Blockscout <IconExternal /></a>
+      </div>
+    </details>
   );
 }
 
@@ -354,6 +359,7 @@ export function walletEthTotals(res) {
 export function WalletResult({ res, compact }) {
   const { pending, escrow } = walletEthTotals(res);
   const total = toEth(pending + escrow);
+  const { calls } = claimPlan(res.tokens, res.escrow);
   return (
     <section className="result">
       <div className="result-head">
@@ -363,8 +369,9 @@ export function WalletResult({ res, compact }) {
       <Stats items={[
         { label: 'Token', value: res.tokens.length },
         { label: 'To sweep (est.)', value: `${fmt(pending)} ETH` },
-        { label: 'Trong escrow', value: `${fmt(escrow)} ETH` },
-        { label: 'Total claimable', value: res.ethUsd ? fmtUsd(total * res.ethUsd) : `${fmt(pending + escrow)} ETH`, accent: true, sub: res.ethUsd ? `ETH ≈ $${res.ethUsd.toLocaleString('en-US')}` : null },
+        { label: 'In escrow', value: `${fmt(escrow)} ETH` },
+        { label: 'Total claimable', value: res.ethUsd ? fmtUsd(total * res.ethUsd) : `${fmt(pending + escrow)} ETH`, accent: true, sub: res.ethUsd ? `ETH ≈ $${res.ethUsd.toLocaleString('en-US')}` : null,
+          action: calls.length > 0 ? <ClaimAll wallet={res.wallet} calls={calls} /> : null },
       ]} />
 
       <h3>Token</h3>
@@ -376,7 +383,6 @@ export function WalletResult({ res, compact }) {
       <h3>Escrow balance <span className="muted">· claimable now</span></h3>
       <div className="card">{res.escrow.map(a => <EscrowRow key={a.asset} a={a} ethUsd={res.ethUsd} />)}</div>
 
-      <h3>Claim with MetaMask</h3>
       <ClaimSteps wallet={res.wallet} tokens={res.tokens} escrow={res.escrow} />
     </section>
   );
@@ -389,6 +395,7 @@ export function RecipientBlock({ r, tokens, ethUsd }) {
         <IconWallet /><span className="muted">Fee recipient</span>
         <a className="mono" href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer">{r.wallet}</a>
         <Copy text={r.wallet} />
+        {(() => { const { calls } = claimPlan(tokens, r.escrow); return calls.length > 0 ? <ClaimAll wallet={r.wallet} calls={calls} /> : null; })()}
       </div>
       <div className="card">{r.escrow.map(a => <EscrowRow key={a.asset} a={a} ethUsd={ethUsd} />)}</div>
       <p className="muted small">Escrow pools fees from all of this wallet's tokens (including tokens not in the CA list).</p>
