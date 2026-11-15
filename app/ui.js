@@ -276,7 +276,7 @@ const rpcWait = async hash => {
   throw new Error('Timed out waiting for confirmation');
 };
 
-function ClaimAll({ wallet, calls }) {
+export function ClaimAll({ wallet, calls }) {
   const [st, setSt] = useState({ busy: '', done: '', err: '' });
   async function run() {
     const eth = window.ethereum;

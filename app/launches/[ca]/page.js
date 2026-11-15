@@ -6,8 +6,8 @@ import {
   tokenSummary, tradesOf, blockTime, holdersOf, quoteBuy, quoteSell, tokenBalance, tokenAllowance,
   ethBalance, buyData, sellData, approveData, waitTx,
 } from '../../../lib/market';
-import { client, ADDR } from '../../../lib/pons';
-import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet } from '../../ui';
+import { client, ADDR, checkTokens } from '../../../lib/pons';
+import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet, ClaimAll, claimPlan, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck } from '../../icons';
 
@@ -164,7 +164,10 @@ export default function TokenPage() {
           )}
         </div>
 
-        <TradeBox s={s} account={w.account} connect={w.connect} onDone={load} />
+        <div className="tp-side">
+          <TradeBox s={s} account={w.account} connect={w.connect} onDone={load} />
+          <FeeBox token={s.token} account={w.account} connect={w.connect} ethUsd={ethUsd} />
+        </div>
       </div>
     </div>
   );
@@ -262,6 +265,48 @@ function TradeBox({ s, account, connect, onDone }) {
         : <button type="button" className="btn-primary big-btn" onClick={connect}>Connect Wallet</button>}
       {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}
       {st.err && <ErrorLine msg={st.err} />}
+    </div>
+  );
+}
+
+// Unclaimed creator fees of this token + its fee recipient; one-click claim for the recipient wallet
+function FeeBox({ token, account, connect, ethUsd }) {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const load = useCallback(() => {
+    setErr('');
+    checkTokens([token]).then(r => {
+      const t = r.tokens[0];
+      if (t.error) throw new Error(t.error);
+      const owner = t.splitter ? t.splitter.creator : t.creatorFeeRecipient;
+      const rec = r.recipients.find(x => x.wallet === owner);
+      setD({ t, owner, escrow: rec ? rec.escrow : [] });
+    }).catch(e => setErr(e.shortMessage || e.message));
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  if (err) return <div className="card feebox"><ErrorLine msg={err} onRetry={load} /></div>;
+  if (!d) return <div className="card feebox"><Spinner text="Reading creator fees…" /></div>;
+  const { t, owner, escrow } = d;
+  const eth = toEth(t.estimatedCreator);
+  const escEth = escrow.find(a => a.asset === '0x0000000000000000000000000000000000000000');
+  const { calls } = claimPlan([t], escrow);
+  const isOwner = account && account.toLowerCase() === owner.toLowerCase();
+  return (
+    <div className="card feebox">
+      <span className="muted small">Unclaimed creator fees</span>
+      <b className="fb-amt">{fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}</b>
+      <span className="muted small">{ethUsd ? fmtUsd(eth * ethUsd) : '—'}{t.splitter ? ' · creator share 90%' : ''}</span>
+      {escEth && BigInt(escEth.balance) > 0n && <small className="muted">+ {fmt(escEth.balance)} ETH already in the recipient's escrow</small>}
+      <div className="fb-row">
+        <span className="muted small">Fee recipient</span>
+        <a className="mono small" href={`${EXPLORER}/address/${owner}`} target="_blank" rel="noreferrer">{short(owner)}</a>
+        {isOwner && <em className="tag ok">you</em>}
+      </div>
+      {calls.length === 0 ? <small className="muted">Nothing to claim right now.</small>
+        : isOwner ? <ClaimAll wallet={owner} calls={calls} />
+        : account ? <small className="muted">Connect the fee recipient wallet to claim.</small>
+        : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
     </div>
   );
 }
