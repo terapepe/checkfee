@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { listCheckfeeTokens, tokenSummary, tradesOf, blockTime } from '../../lib/market';
+import { listCheckfeeTokens, tokenSummary, tradesOf, blockTime, getLogsChunked, ipfsUrl } from '../../lib/market';
+import { clankerSummary, clankerTrades } from '../../lib/clanker';
 import { getEthUsd, short, Spinner, ErrorLine } from '../ui';
 import { Sparkline, usdC, ago, Logo } from '../charts';
 import { IconBolt } from '../icons';
@@ -10,6 +11,7 @@ const TABS = [
   { id: 'new', label: 'New' },
   { id: 'near', label: 'Near graduation' },
   { id: 'grad', label: 'Graduated' },
+  { id: 'clanker', label: 'Clanker' },
 ];
 
 export default function Launches() {
@@ -25,8 +27,13 @@ export default function Launches() {
         setEthUsd(px);
         const out = await Promise.all(list.map(async l => {
           try {
+            if (l.platform === 'clanker') {
+              const [s, trades, time] = await Promise.all([clankerSummary(l.token), clankerTrades(l.poolId, null, l.block, getLogsChunked, false), blockTime(l.block)]);
+              // native ETH is always currency0 in v4, so the token side is known without the summary
+              return { ...s, logo: ipfsUrl(s.image), phase: 0, progress: null, time, spark: trades.slice(-40).map(t => t.price), trades: trades.length };
+            }
             const [s, trades, time] = await Promise.all([tokenSummary(l.token, l.block), tradesOf(l.curve, l.block, false), blockTime(l.block)]);
-            return { ...s, time, spark: trades.slice(-40).map(t => t.price), trades: trades.length };
+            return { ...s, platform: 'pons', time, spark: trades.slice(-40).map(t => t.price), trades: trades.length };
           } catch (e) { return { token: l.token, symbol: '?', name: l.token, error: e.message, time: null }; }
         }));
         setRows(out);
@@ -38,8 +45,9 @@ export default function Launches() {
     const ok = (rows || []).filter(r => !r.error);
     const mc = r => (r.mcapEth || 0);
     if (tab === 'new') return [...ok].sort((a, b) => (b.time || 0) - (a.time || 0));
-    if (tab === 'near') return ok.filter(r => r.phase === 0).sort((a, b) => b.progress - a.progress);
+    if (tab === 'near') return ok.filter(r => r.phase === 0 && r.progress != null).sort((a, b) => b.progress - a.progress);
     if (tab === 'grad') return ok.filter(r => r.phase > 0);
+    if (tab === 'clanker') return ok.filter(r => r.platform === 'clanker').sort((a, b) => mc(b) - mc(a));
     return [...ok].sort((a, b) => mc(b) - mc(a));
   }, [rows, tab]);
   const top = useMemo(() => [...(rows || [])].filter(r => !r.error).sort((a, b) => (b.mcapEth || 0) - (a.mcapEth || 0)).slice(0, 6), [rows]);
@@ -50,7 +58,7 @@ export default function Launches() {
         <h1 className="lp-title">Launches</h1>
         <a className="btn-primary" href="/launch"><IconBolt />Launch token</a>
       </div>
-      <p className="muted">Tokens created on Ponsfamily through CheckFee.</p>
+      <p className="muted">Tokens created on Ponsfamily and Clanker through CheckFee.</p>
 
       {!rows && <Spinner text="Collecting tokens from on-chain…" />}
       {err && <ErrorLine msg={err} />}
@@ -83,12 +91,13 @@ export default function Launches() {
                 <span className="lp-tok">
                   <Logo t={t} />
                   <span>
-                    <b>{t.name}</b> <span className="muted">{t.symbol}</span>
+                    <b>{t.name}</b> <span className="muted">{t.symbol}</span> <em className="tag">{t.platform === 'clanker' ? 'Clanker' : 'Pons'}</em>
                     <small className="muted"><span className="mono">{short(t.deployer)}</span> · {ago(t.time)} · {t.trades} trades</small>
                   </span>
                 </span>
                 <span className="muted">ETH</span>
-                <span className="lp-prog"><i style={{ width: `${Math.round(t.progress * 100)}%` }} /><small>{t.phase > 0 ? 'Graduated' : `${(t.progress * 100).toFixed(1)}%`}</small></span>
+                {t.progress == null ? <span className="muted small">Uniswap v4</span>
+                  : <span className="lp-prog"><i style={{ width: `${Math.round(t.progress * 100)}%` }} /><small>{t.phase > 0 ? 'Graduated' : `${(t.progress * 100).toFixed(1)}%`}</small></span>}
                 <span><Sparkline points={t.spark} /></span>
                 <b className="lp-mc">{t.phase > 0 ? '—' : usdC(ethUsd ? t.mcapEth * ethUsd : null)}</b>
               </a>

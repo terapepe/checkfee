@@ -7,17 +7,25 @@ import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, Icon
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
-import { readClankerInfo, buildClankerTx, parseClankerLaunch, clankerUrl, CLANKER_FEE_PCT } from '../../lib/clanker';
+import { readClankerInfo, buildClankerTx, parseClankerLaunch } from '../../lib/clanker';
+import { distributorOf, createDistributorTx, routeToTx } from '../../lib/launch';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker' };
 const DRAFT = 'checkfee_launch_draft';
-// ticker: A-Z 0-9 only, uppercase, ≤30 · name: letters/digits/spaces only, <100
+// ticker: A-Z 0-9 only, uppercase · name: letters/digits/spaces only · contract limits per platform
+const LIMIT = { pons: { name: 64, symbol: 16 }, clanker: { name: 99, symbol: 30 } };
 const CLEAN = {
   symbol: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30),
   name: v => v.replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 99),
 };
+const FEES = [0, 1, 2, 3, 4, 5]; // trading fee %, Clanker minimum is 1
+const DESTS = [
+  ['wallet', 'Your fee wallet', 'Fees accrue to your fee wallet to claim.'],
+  ['buyback', 'Buyback vest', 'Part of your creator fees buys the token back: bought tokens lock and your share releases to your fee escrow gradually over 5 years.'],
+  ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
+];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', taxBps: 0, buyback: false, buy: '' };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '' };
 
 export default function Launch() {
   const w = useWallet();
@@ -79,8 +87,12 @@ export default function Launch() {
   let quoteIn = 0n;
   try { quoteIn = f.buy ? parseEther(String(f.buy)) : 0n; } catch {}
   const total = info ? info.launchFee + quoteIn + serviceFee : null;
-  const payoutOk = isAddress(f.payout || '', { strict: false });
-  const ready = w.account && f.name.trim() && f.symbol.trim() && img.uri && payoutOk && info?.canLaunch && credits != null && !st.step;
+  const holders = !isC && f.dest === 'holders';
+  const payoutOk = holders || isAddress(f.payout || '', { strict: false });
+  const lim = LIMIT[pf];
+  const lenOk = f.name.trim().length <= lim.name && f.symbol.length <= lim.symbol;
+  const feeOk = !(isC && Number(f.fee) < 1);
+  const ready = w.account && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && info?.canLaunch && credits != null && !st.step;
 
   async function launch(e) {
     e.preventDefault();
@@ -112,11 +124,35 @@ export default function Launch() {
       clearFeePaid(from);
       try { localStorage.removeItem(DRAFT); } catch {}
       const L = isC ? parseClankerLaunch(rc.logs) : parseLaunch(rc.logs);
-      if (L?.token) { location.href = isC ? clankerUrl(L.token) : `/launches/${L.token}`; return; } // go straight to the token page
+      const note = L?.token && holders ? await shareWithHolders(eth, from, L.token) : '';
+      if (note) { setSt({ step: '', hash, token: '', err: note, link: `/launches/${L.token}` }); return; }
+      if (L?.token) { location.href = `/launches/${L.token}`; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
     } catch (er) {
       setSt(s => ({ ...s, step: '', err: er.code === 4001 ? 'Cancelled in MetaMask' : (er.shortMessage || er.message || String(er)) }));
     }
+  }
+
+  // Holders: deploy the token's distributor, then route creator fees to it (same steps as ponsfamily.com)
+  async function shareWithHolders(eth, from, token) {
+    const send = async (tx, step) => {
+      setSt({ step });
+      const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
+      const rc = await waitReceipt(h);
+      if (rc.status !== 'success') throw new Error(`${step} failed`);
+    };
+    try {
+      let dist = await distributorOf(token);
+      if (/^0x0+$/.test(dist)) {
+        await send(createDistributorTx(token), 'Holders 1/2: create the fee distributor…');
+        dist = await distributorOf(token);
+      }
+      await send(routeToTx(token, dist), 'Holders 2/2: route creator fees to holders…');
+    } catch (er) {
+      // the launch itself went through: fees still go to the launcher's wallet until routed
+      return `Token launched, but fees were not handed to holders yet (${er.code === 4001 ? 'cancelled' : er.shortMessage || er.message}). Until then they go to your wallet; you can finish on ponsfamily.com from the token page.`;
+    }
+    return '';
   }
 
   if (st.token) {
@@ -147,10 +183,10 @@ export default function Launch() {
   return (
     <>
       <PageHeader icon={IconBolt} title="Launch token" desc={isC
-        ? `Create a token on Clanker (Uniswap v4, ETH pair). ${CLANKER_FEE_PCT}% buy/sell fee; your share goes straight to your fee wallet.`
+        ? 'Create a token on Clanker (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.'
         : 'Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost.'} />
       <div className="seg" style={{ marginBottom: 16 }}>
-        {Object.entries(PLATFORMS).map(([k, v]) => <button key={k} type="button" className={pf === k ? 'on' : ''} onClick={() => setPf(k)} disabled={!!st.step}>{v}</button>)}
+        {Object.entries(PLATFORMS).map(([k, v]) => <button key={k} type="button" className={pf === k ? 'on' : ''} onClick={() => { setPf(k); if (k === 'clanker') setF(v => (Number(v.fee) < 1 ? { ...v, fee: 1 } : v)); }} disabled={!!st.step}>{v}</button>)}
       </div>
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
@@ -163,8 +199,8 @@ export default function Launch() {
               {img.uri && <em className="badge">IPFS ✓</em>}
             </label>
             <div className="lf-col">
-              <label><L icon={IconTag}>Token name</L><input value={f.name} onChange={set('name')} maxLength={99} placeholder="NEXT AI" required /></label>
-              <label><L icon={IconHash}>Ticker</L><input value={f.symbol} onChange={set('symbol')} maxLength={30} placeholder="NEXT" required /></label>
+              <label><L icon={IconTag}>Token name</L><input value={f.name} onChange={set('name')} maxLength={lim.name} placeholder="NEXT AI" required /></label>
+              <label><L icon={IconHash}>Ticker</L><input value={f.symbol} onChange={set('symbol')} maxLength={lim.symbol} placeholder="NEXT" required /></label>
             </div>
           </div>
           <label><L icon={IconText}>Description</L><textarea rows={3} value={f.description} onChange={set('description')} maxLength={500} /></label>
@@ -179,13 +215,26 @@ export default function Launch() {
 
         <div className="card lf">
           <h3 className="sec"><IconCoin width={16} height={16} />Fees &amp; first buy</h3>
-          <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
-          {isC ? <p className="muted small">This wallet receives the creator share of the {CLANKER_FEE_PCT}% buy/sell fee (paid in ETH), claimable on clanker.world. Defaults to the connected wallet.</p> : <>
-          <p className="muted small">This wallet receives 70% of the base trading fee + 100% of the creator tax, claimable directly on the Check pages. Defaults to the connected wallet.</p>
-          <label><L icon={IconPercent}>Creator tax: <b>{f.taxBps / 100}%</b></L>
-            <input type="range" min={0} max={info?.maxTaxBps ?? 1000} step={50} value={f.taxBps} onChange={set('taxBps')} />
-          </label>
-          <label className="check"><input type="checkbox" checked={f.buyback} onChange={set('buyback')} /><IconRecycle className="ic" /> Enable buyback (part of creator fees buys back the token, vested over 5 years)</label></>}
+          <div className="lbl-block">
+            <L icon={IconPercent}>{isC ? 'Trading fee (buy & sell)' : 'Creator fee'}: <b>{f.fee}%</b></L>
+            <div className="seg">
+              {FEES.map(n => <button key={n} type="button" className={Number(f.fee) === n ? 'on' : ''} disabled={isC && n < 1} onClick={() => setF(v => ({ ...v, fee: n }))}>{n}%</button>)}
+            </div>
+            <p className="muted small">{isC ? "Charged on every buy and sell, Clanker's cut included (minimum 1%)." : 'Charged on every trade on top of the 1% Pons base fee.'}</p>
+          </div>
+          {!isC && (
+            <fieldset className="dest">
+              <legend className="muted small">Where your creator fees go</legend>
+              {DESTS.map(([k, t, d]) => (
+                <label key={k} className="check"><input type="radio" name="dest" checked={f.dest === k} onChange={() => setF(v => ({ ...v, dest: k }))} />
+                  <span><b>{t}</b><br /><small className="muted">{d}</small></span></label>
+              ))}
+            </fieldset>
+          )}
+          {!holders && <>
+            <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder="0x…" /></label>
+            <p className="muted small">{isC ? 'Receives the creator share of the trading fee (in ETH), claimable on the token page.' : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Defaults to the connected wallet.</p>
+          </>}
           <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
           <div className="sum">
@@ -198,7 +247,9 @@ export default function Launch() {
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
           <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || 'Launch with MetaMask'}</button>
           {st.hash && <a className="mono small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
+          {!lenOk && <ErrorLine msg={`${PLATFORMS[pf]} allows a name up to ${lim.name} and a ticker up to ${lim.symbol} characters.`} />}
           {st.err && <ErrorLine msg={st.err} />}
+          {st.link && <a className="pill" href={st.link}>Open the token page</a>}
         </div>
       </form>
     </>

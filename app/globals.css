@@ -330,3 +330,8 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
 .fb-break { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 12.5px; margin-top: 6px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
 .fb-break span { color: var(--muted); }
 .fb-break b { font-weight: 500; text-align: right; }
+
+.lbl-block { display: flex; flex-direction: column; gap: 8px; }
+.dest { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.dest legend { padding: 0 6px; }
+.dest .check { align-items: flex-start; }
