@@ -199,6 +199,7 @@ function TradeBox({ s, account, connect, onDone }) {
   const [quote, setQuote] = useState(null);
   const [bal, setBal] = useState({ eth: 0n, tok: 0n });
   const [st, setSt] = useState({ busy: '', err: '', hash: '' });
+  const MAX_UINT = 2n ** 256n - 1n;
   const SLIP = 2n; // %
 
   useEffect(() => {
@@ -236,13 +237,34 @@ function TradeBox({ s, account, connect, onDone }) {
         hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.curve, data: buyData(inWei, minOut, from), value: '0x' + inWei.toString(16) }] });
       } else {
         const allow = await tokenAllowance(s.token, from, s.curve);
+        const sell = { to: s.curve, data: sellData(inWei, minOut, from), value: '0x0' };
         if (allow < inWei) {
-          setSt({ busy: 'Step 1/2: approve the curve to spend tokens…' });
-          const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.token, data: approveData(s.curve, inWei), value: '0x0' }] });
-          await waitTx(h);
+          // 1) wallet supports batches (EIP-5792): approve + sell in one confirmation
+          const caps = await eth.request({ method: 'wallet_getCapabilities', params: [from, ['0x1237']] }).catch(() => null);
+          const atomic = caps?.['0x1237']?.atomic?.status;
+          if (atomic === 'supported' || atomic === 'ready') {
+            setSt({ busy: 'Confirm approve + sell in MetaMask (one step)…' });
+            const { id } = await eth.request({ method: 'wallet_sendCalls', params: [{ version: '2.0.0', from, chainId: '0x1237', atomicRequired: true,
+              calls: [{ to: s.token, data: approveData(s.curve, inWei), value: '0x0' }, sell] }] });
+            setSt({ busy: 'Waiting for confirmation…' });
+            for (let i = 0; i < 90 && !hash; i++) {
+              const r = await eth.request({ method: 'wallet_getCallsStatus', params: [id] }).catch(() => null);
+              if (r?.status >= 400) throw new Error('Sell failed');
+              if (r?.status >= 200 && r.status < 300) hash = r.receipts?.[r.receipts.length - 1]?.transactionHash;
+              else await new Promise(res => setTimeout(res, 2000));
+            }
+            if (!hash) throw new Error('Timed out waiting for the sell');
+          } else {
+            // 2) otherwise approve once without limit, so every later sell of this token is a single signature
+            setSt({ busy: 'One-time approval: allow the curve to sell this token…' });
+            const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.token, data: approveData(s.curve, MAX_UINT), value: '0x0' }] });
+            await waitTx(h);
+          }
         }
-        setSt({ busy: 'Confirm the sell in MetaMask…' });
-        hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: s.curve, data: sellData(inWei, minOut, from), value: '0x0' }] });
+        if (!hash) {
+          setSt({ busy: 'Confirm the sell in MetaMask…' });
+          hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, ...sell }] });
+        }
       }
       setSt({ busy: 'Waiting for confirmation…', hash });
       const rc = await waitTx(hash);
