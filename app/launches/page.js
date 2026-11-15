@@ -59,10 +59,10 @@ export default function Launches() {
         <>
           <h3>Trending</h3>
           <div className="trend">
-            {top.map((t, i) => (
+            {top.map(t => (
               <a key={t.token} href={`/launches/${t.token}`} className="trend-card">
                 <div className="trend-img"><Logo t={t} size={160} /></div>
-                <div className="trend-meta"><span className="muted">{i + 1}</span> <b>{t.name}</b></div>
+                <div className="trend-meta"><b>{t.name}</b></div>
                 <div className="trend-mc">{usdC(ethUsd && t.mcapEth ? t.mcapEth * ethUsd : null)}</div>
               </a>
             ))}

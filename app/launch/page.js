@@ -78,7 +78,8 @@ export default function Launch() {
       if (rc.status !== 'success') throw new Error('Launch transaction failed');
       clearFeePaid(from);
       const L = parseLaunch(rc.logs);
-      setSt({ step: '', hash, token: L?.token || '' });
+      if (L?.token) { location.href = `/launches/${L.token}`; return; } // go straight to the token page
+      setSt({ step: '', hash, token: '' });
     } catch (er) {
       setSt(s => ({ ...s, step: '', err: er.code === 4001 ? 'Cancelled in MetaMask' : (er.shortMessage || er.message || String(er)) }));
     }
