@@ -143,26 +143,27 @@ function PonsTokenPage() {
           {tab === 'trades' ? (
             <div className="card table-wrap">
               <table className="table">
-                <thead><tr><th>Side</th><th>Trader</th><th>ETH</th><th>{s.symbol}</th><th>Price</th><th>Age</th></tr></thead>
+                <thead><tr><th>Side</th><th>Trader</th><th>ETH</th><th>USD</th><th>{s.symbol}</th><th>Price</th><th>Age</th></tr></thead>
                 <tbody>
                   {[...trades].reverse().slice(0, 100).map(t => (
                     <tr key={t.tx + t.logIndex}>
                       <td className={t.side === 'Buy' ? 'ok' : 'err'}>{t.side}</td>
                       <td><a className="mono" href={`${EXPLORER}/address/${t.trader}`} target="_blank" rel="noreferrer">{short(t.trader)}</a></td>
                       <td>{Number(formatEther(t.eth)).toPrecision(3)}</td>
+                      <td>{px ? usdC(Number(formatEther(t.eth)) * px) : '—'}</td>
                       <td>{compact(Number(formatUnits(t.tokens, 18)))}</td>
                       <td>{priceUsd(t.price * px)}</td>
                       <td><a className="muted" href={`${EXPLORER}/tx/${t.tx}`} target="_blank" rel="noreferrer">{ago(t.time)}</a></td>
                     </tr>
                   ))}
-                  {!trades.length && <tr><td colSpan={6} className="muted">No trades yet</td></tr>}
+                  {!trades.length && <tr><td colSpan={7} className="muted">No trades yet</td></tr>}
                 </tbody>
               </table>
             </div>
           ) : (
             <div className="card table-wrap">
               <table className="table">
-                <thead><tr><th>#</th><th>Holder</th><th>Amount</th><th>%</th></tr></thead>
+                <thead><tr><th>#</th><th>Holder</th><th>Amount</th><th>%</th><th>USD</th></tr></thead>
                 <tbody>
                   {(holders?.items || []).map((h, i) => (
                     <tr key={h.address}>
@@ -172,6 +173,7 @@ function PonsTokenPage() {
                         {h.address.toLowerCase() === s.deployer.toLowerCase() && <em className="tag warn">creator</em>}</td>
                       <td>{compact(Number(formatUnits(h.value, 18)))}</td>
                       <td>{(Number(formatUnits(h.value, 18)) / 1e7).toFixed(2)}%</td>
+                      <td>{s.priceEth != null && px ? usdC(Number(formatUnits(h.value, 18)) * s.priceEth * px) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
