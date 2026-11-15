@@ -308,3 +308,5 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
 .toggle input:checked + .track { background: var(--accent); }
 .toggle input:checked + .track .knob { transform: translateX(16px); background: #0b0d10; }
 .toggle:has(input:checked) { color: var(--text); }
+.claim-all { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; background: rgba(200, 245, 63, .06); border: 1px solid rgba(200, 245, 63, .2); }
+.claim-all small { flex-basis: 100%; }

@@ -265,6 +265,63 @@ function EscrowRow({ a, ethUsd }) {
   );
 }
 
+// One click for every step: atomic batch (EIP-5792 wallet_sendCalls) when MetaMask supports it
+// on this chain → a single confirmation; otherwise sends the steps one after another automatically.
+const rpcWait = async hash => {
+  for (let i = 0; i < 90; i++) {
+    const r = await fetch('https://rpc.mainnet.chain.robinhood.com', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getTransactionReceipt', params: [hash] }) }).then(x => x.json()).catch(() => ({}));
+    if (r.result) { if (r.result.status !== '0x1') throw new Error('Transaction failed'); return r.result; }
+    await new Promise(res => setTimeout(res, 2000));
+  }
+  throw new Error('Timed out waiting for confirmation');
+};
+
+function ClaimAll({ wallet, calls }) {
+  const [st, setSt] = useState({ busy: '', done: '', err: '' });
+  async function run() {
+    const eth = window.ethereum;
+    if (!eth) return setSt({ err: 'MetaMask not found in this browser' });
+    try {
+      setSt({ busy: 'Preparing…' });
+      const [from] = await eth.request({ method: 'eth_requestAccounts' });
+      if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`MetaMask is on ${short(from)}, please switch to ${short(wallet)}`);
+      await ensureChain(eth);
+      const caps = await eth.request({ method: 'wallet_getCapabilities', params: [from, [CHAIN_HEX]] }).catch(() => null);
+      const atomic = caps?.[CHAIN_HEX]?.atomic?.status;
+      if (atomic === 'supported' || atomic === 'ready') {
+        setSt({ busy: 'Confirm the batch in MetaMask…' });
+        const { id } = await eth.request({ method: 'wallet_sendCalls', params: [{ version: '2.0.0', from, chainId: CHAIN_HEX, atomicRequired: true, calls: calls.map(c => ({ ...c, value: '0x0' })) }] });
+        setSt({ busy: 'Waiting for confirmation…' });
+        for (let i = 0; i < 90; i++) {
+          const r = await eth.request({ method: 'wallet_getCallsStatus', params: [id] }).catch(() => null);
+          if (r?.status >= 200 && r.status < 300) return setSt({ done: r.receipts?.[0]?.transactionHash || 'ok' });
+          if (r?.status >= 400) throw new Error('Batch failed');
+          await new Promise(res => setTimeout(res, 2000));
+        }
+        throw new Error('Timed out waiting for the batch');
+      }
+      let last = '';
+      for (let i = 0; i < calls.length; i++) {
+        setSt({ busy: `Step ${i + 1}/${calls.length}: confirm in MetaMask…` });
+        last = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: calls[i].to, data: calls[i].data, value: '0x0' }] });
+        setSt({ busy: `Step ${i + 1}/${calls.length}: waiting for confirmation…` });
+        await rpcWait(last);
+      }
+      setSt({ done: last });
+    } catch (e) {
+      setSt({ err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message || String(e)) });
+    }
+  }
+  return (
+    <div className="claim-all">
+      <button type="button" className="btn-primary" onClick={run} disabled={!!st.busy}><IconBolt />{st.busy || `Claim all (${calls.length} steps in one click)`}</button>
+      {st.done && <span className="ok small">Done{st.done.startsWith('0x') && <> · <a href={`${EXPLORER}/tx/${st.done}`} target="_blank" rel="noreferrer">tx <IconExternal /></a></>}</span>}
+      {st.err && <span className="err small">{st.err}</span>}
+      <small className="muted">Uses a single MetaMask confirmation when your wallet supports batched calls on this chain; otherwise sends each step automatically.</small>
+    </div>
+  );
+}
+
 // Claim steps for one fee recipient
 export function ClaimSteps({ wallet, tokens, escrow }) {
   const sweeps = tokens.filter(t => !t.error && t.sweep?.ok);
@@ -273,6 +330,9 @@ export function ClaimSteps({ wallet, tokens, escrow }) {
   return (
     <div className="card claim">
       <p className="muted">Connect MetaMask with wallet <span className="mono">{short(wallet)}</span> and run the steps in order, waiting for each to confirm. The page switches to Robinhood Chain automatically. You can also copy To / Hex data and send manually (MetaMask → Settings → Advanced → Show hex data).</p>
+      {sweeps.length + claimAssets.length > 1 && (
+        <ClaimAll wallet={wallet} calls={[...sweeps.map(t => ({ to: t.sweep.to, data: t.sweep.data })), ...claimAssets.map(a => ({ to: a.claim.to, data: a.claim.data }))]} />
+      )}
       {sweeps.map((t, i) => (
         <Tx key={t.token} step={i + 1} title={t.splitter ? `Claim ${t.symbol} fees (sweep + 90/10 split)` : `Sweep ${t.symbol} fees into escrow`} to={t.sweep.to} data={t.sweep.data} fn={t.sweep.fn} wallet={wallet} />
       ))}
