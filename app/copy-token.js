@@ -3,16 +3,16 @@
 import { IconCopy } from './icons';
 
 const DRAFT = 'checkfee_launch_draft'; // same key the Launch page restores from
-const FEES = [0, 1, 2, 3, 4, 5];
+const FEES = [0, 1, 1.5, 2, 2.5, 3, 4, 5];
 
 export function CopyTokenButton({ pf, chainId = 4663, t }) {
   function go() {
     const so = t.socials || {};
     const pick = k => (typeof so[k] === 'string' ? so[k] : '');
-    // fee: nearest option the form offers (0–5%), Clanker / o1 minimum 1%
-    let fee = Math.round(Number(t.fee) || 0);
-    fee = Math.min(5, Math.max(pf === 'pons' ? 0 : 1, fee));
-    if (!FEES.includes(fee)) fee = 1;
+    // fee: nearest option the form offers, Clanker / o1 minimum 1%
+    const want = Number(t.fee) || 0;
+    const opts = FEES.filter(n => pf === 'pons' || n >= 1);
+    const fee = opts.reduce((a, n) => (Math.abs(n - want) < Math.abs(a - want) ? n : a), opts[0]);
     const draft = {
       pf, net: Number(chainId),
       // only an ipfs:// image can be reused as-is; otherwise the user picks one again

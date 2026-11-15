@@ -20,7 +20,7 @@ const CLEAN = {
   symbol: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16),
   name: v => v.replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 64),
 };
-const FEES = [0, 1, 2, 3, 4, 5]; // trading fee %, Clanker / o1 minimum is 1
+const FEES = [0, 1, 1.5, 2, 2.5, 3, 4, 5]; // trading fee %, Clanker / o1 minimum is 1
 const DESTS = [
   ['wallet', 'Your fee wallet', 'Fees accrue to your fee wallet to claim.'],
   ['buyback', 'Buyback vest', 'Part of your creator fees buys the token back: bought tokens lock and your share releases to your fee escrow gradually over 5 years.'],
