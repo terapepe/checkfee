@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 // Unified results for the Check pages: one summary (claimable per source + claim), one token table for all platforms/networks
 import { zeroAddress } from 'viem';
 import { ClaimAll, claimPlan, ClaimSteps, TokenCard, walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER, useWallet } from './ui';
@@ -29,15 +30,16 @@ export function rowsOf({ pons, tax = [] }, wallet) {
     if (t.error) { rows.push({ key: t.token, error: t.error, token: t.token }); continue; }
     rows.push({
       key: 'p' + t.token, pf: 'pons', chainId: 4663, token: t.token, name: t.name, symbol: t.symbol,
-      recipient: t.splitter ? t.splitter.creator : t.creatorFeeRecipient,
+      recipient: t.splitter ? t.splitter.creator : t.creatorFeeRecipient, creator: t.deployer,
       amount: t.quote === zeroAddress ? BigInt(t.estimatedCreator) : null, kind: 'to sweep', status: t.phaseName,
     });
   }
   for (const r of tax) for (const t of r.tokens) {
     if (t.error) { rows.push({ key: t.token, error: t.error, token: t.token }); continue; }
-    rows.push({ key: r.platform + r.chainId + t.token, pf: r.platform, chainId: r.chainId, token: t.token, name: t.name, symbol: t.symbol, recipient: t.recipient, amount: t.earned, kind: 'earned' });
+    rows.push({ key: r.platform + r.chainId + t.token, pf: r.platform, chainId: r.chainId, token: t.token, name: t.name, symbol: t.symbol, recipient: t.recipient, creator: t.creator, amount: t.earned, kind: 'earned' });
   }
-  return rows.map(x => ({ ...x, mine: wallet && x.recipient && x.recipient.toLowerCase() === wallet.toLowerCase() }));
+  const same = (a, b) => a && b && a.toLowerCase() === b.toLowerCase();
+  return rows.map(x => ({ ...x, mine: wallet && same(x.recipient, wallet), created: wallet && same(x.creator, wallet) }));
 }
 
 export function TokenTable({ rows, ethUsd, wallet }) {
@@ -45,14 +47,15 @@ export function TokenTable({ rows, ethUsd, wallet }) {
   return (
     <div className="card table-wrap ck-table">
       <table className="table">
-        <thead><tr><th>Token</th><th>Platform</th><th>Fee recipient</th><th className="r">Fees</th><th /></tr></thead>
+        <thead><tr><th>Token</th><th>Platform</th><th>Creator</th><th>Fee recipient</th><th className="r">Fees</th><th /></tr></thead>
         <tbody>
           {rows.map(r => r.error ? (
-            <tr key={r.key}><td colSpan={5}><span className="mono">{short(r.token)}</span> <span className="err small">{r.error}</span></td></tr>
+            <tr key={r.key}><td colSpan={6}><span className="mono">{short(r.token)}</span> <span className="err small">{r.error}</span></td></tr>
           ) : (
             <tr key={r.key}>
               <td><a className="ck-tok" href={tokenHref(r, r.chainId)}><TokenAvatar address={r.token} symbol={r.symbol} /><span><b>{r.name}</b><small className="muted">{r.symbol} · <span className="mono">{short(r.token)}</span></small></span></a></td>
               <td><em className="tag">{r.pf === 'pons' ? 'Pons' : TAX[r.pf].label}</em><ChainBadge id={r.chainId} label={false} />{r.status && <small className="muted ck-status">{r.status}</small>}</td>
+              <td>{wallet && r.created ? <em className="tag">this wallet</em> : r.creator ? <a className="mono small" href={`${CHAINS[r.chainId].explorer}/address/${r.creator}`} target="_blank" rel="noreferrer">{short(r.creator)}</a> : '—'}</td>
               <td>{wallet && r.mine ? <em className="tag ok">this wallet</em> : <a className="mono small" href={`${CHAINS[r.chainId].explorer}/address/${r.recipient}`} target="_blank" rel="noreferrer">{short(r.recipient)}</a>}</td>
               <td className="r">{r.amount == null ? <span className="muted">—</span> : <><b>{fmt(r.amount)} ETH</b><small className="muted">{r.kind} · {usd(r.amount, ethUsd)}</small></>}</td>
               <td className="r"><a className="icon-btn" href={tokenHref(r, r.chainId)} title="Token page"><IconExternal /></a></td>
@@ -114,7 +117,7 @@ export function CheckResult({ res, onReload }) {
         </div>
         <SourceList sources={sources} ethUsd={ethUsd} onReload={onReload} />
       </div>
-      {rows.length > 0 ? <TokenTable rows={rows} ethUsd={ethUsd} wallet={wallet} /> : <p className="empty">No tokens created by, or with fees assigned to, this wallet on the selected platforms.</p>}
+      {rows.length > 0 ? <FilteredTable rows={rows} ethUsd={ethUsd} wallet={wallet} /> : <p className="empty">No tokens created by, or with fees assigned to, this wallet on the selected platforms.</p>}
       {pons && pons.tokens.length > 0 && (
         <details className="info-fold">
           <summary>Pons details <span className="muted">· sweep status, escrow, manual claim steps</span></summary>
@@ -123,5 +126,28 @@ export function CheckResult({ res, onReload }) {
         </details>
       )}
     </section>
+  );
+}
+
+// All / Created by this wallet / Fees only (another wallet created it, this wallet receives the fees) / Fees go elsewhere
+function FilteredTable({ rows, ethUsd, wallet }) {
+  const [f, setF] = useState('all');
+  const ok = rows.filter(r => !r.error);
+  const groups = [
+    ['all', 'All', rows],
+    ['created', 'Created', ok.filter(r => r.created)],
+    ['received', 'Fees received from others', ok.filter(r => r.mine && !r.created)],
+    ['elsewhere', 'Fees go to another wallet', ok.filter(r => !r.mine)],
+  ].filter(([k, , list]) => k === 'all' || list.length);
+  const cur = groups.find(g => g[0] === f) || groups[0];
+  return (
+    <>
+      {groups.length > 1 && (
+        <div className="seg ck-filter">
+          {groups.map(([k, l, list]) => <button key={k} type="button" className={cur[0] === k ? 'on' : ''} onClick={() => setF(k)}>{l} <span className="muted">{list.length}</span></button>)}
+        </div>
+      )}
+      <TokenTable rows={cur[2]} ethUsd={ethUsd} wallet={wallet} />
+    </>
   );
 }
