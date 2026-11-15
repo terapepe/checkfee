@@ -1,7 +1,7 @@
 'use client';
 // Unified results for the Check pages: one summary (claimable per source + claim), one token table for all platforms/networks
 import { zeroAddress } from 'viem';
-import { ClaimAll, claimPlan, ClaimSteps, TokenCard, walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER } from './ui';
+import { ClaimAll, claimPlan, ClaimSteps, TokenCard, walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER, useWallet } from './ui';
 import { TaxClaim } from './tax-ui';
 import { TAX } from '../lib/tax';
 import { CHAINS } from '../lib/chains';
@@ -66,6 +66,8 @@ export function TokenTable({ rows, ethUsd, wallet }) {
 
 // claimable per source with its claim button; empty sources collapse into one line
 export function SourceList({ sources, ethUsd, onReload, showWallet }) {
+  const w = useWallet();
+  const isMe = a => w.account && a && w.account.toLowerCase() === a.toLowerCase();
   const live = sources.filter(s => s.amount > 0n || s.tokens > 0);
   const empty = sources.filter(s => !(s.amount > 0n || s.tokens > 0));
   return (
@@ -78,7 +80,8 @@ export function SourceList({ sources, ethUsd, onReload, showWallet }) {
           <span className="ck-src-amt"><b>{fmt(s.amount)} ETH</b><small className="muted">{usd(s.amount, ethUsd)}</small></span>
           <span className="ck-src-act">
             {s.amount === 0n ? <small className="muted">Nothing to claim</small>
-              : s.pf === 'pons' ? (s.calls.length ? <ClaimAll wallet={s.wallet} calls={s.calls} /> : <small className="muted">Nothing to claim</small>)
+              : s.pf === 'pons' ? (!s.calls.length ? <small className="muted">Nothing to claim</small>
+                : isMe(s.wallet) ? <ClaimAll wallet={s.wallet} calls={s.calls} /> : <small className="muted">Connect {short(s.wallet)} to claim</small>)
               : <TaxClaim pf={s.pf} chainId={s.chainId} wallet={s.wallet} owed={s.amount} onDone={onReload} />}
           </span>
         </div>
