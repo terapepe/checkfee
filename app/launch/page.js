@@ -7,6 +7,7 @@ import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, Icon
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET, CHECKFEE_FEE_ON } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
+import { recordLaunch } from '../../lib/market';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge } from '../icons';
@@ -134,6 +135,8 @@ export default function Launch() {
       clearFeePaid(from, chainId);
       try { localStorage.removeItem(DRAFT); } catch {}
       const L = isC ? parseTaxLaunch(pf, chainId, rc.logs) : parseLaunch(rc.logs);
+      // add it to the site's launch list (server side)
+      if (L?.token) await recordLaunch({ chainId, platform: pf, token: L.token, poolId: L.poolId, curve: L.curve, deployer: from, block: rc.blockNumber, txHash: hash });
       const note = L?.token && holders ? await shareWithHolders(eth, from, L.token) : '';
       if (note) { setSt({ step: '', hash, token: '', err: note, link: `/launches/${L.token}` }); return; }
       if (L?.token) { location.href = `/launches/${L.token}${chainId === 4663 ? '' : `?chain=${chainId}`}`; return; } // go straight to the token page

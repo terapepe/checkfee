@@ -33,7 +33,7 @@ export async function POST(req) {
 
   const body = new FormData();
   body.append('file', file, file.name || 'token-image');
-  body.append('pinataMetadata', JSON.stringify({ name: `checkfee-${Date.now()}-${file.name || 'image'}` }));
+  body.append('pinataMetadata', JSON.stringify({ name: `img-${Date.now()}` }));
   const r = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
     method: 'POST', headers: { Authorization: `Bearer ${JWT}` }, body,
   });
@@ -56,7 +56,7 @@ async function pinJson(req) {
   };
   const r = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
     method: 'POST', headers: { Authorization: `Bearer ${JWT}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ pinataContent: meta, pinataMetadata: { name: `checkfee-meta-${meta.symbol}-${Date.now()}` } }),
+    body: JSON.stringify({ pinataContent: meta, pinataMetadata: { name: `meta-${Date.now()}` } }),
   });
   const o = await r.json().catch(() => ({}));
   if (!r.ok || !o.IpfsHash) return Response.json({ error: o.error?.reason || o.error?.details || o.error || `Pinata HTTP ${r.status}` }, { status: 502 });
