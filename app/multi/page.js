@@ -1,10 +1,19 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  WalletResult, fetchWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
+  WalletResult, fetchWallet, fetchClankerWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
   walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER,
 } from '../ui';
 import { IconWallets, IconRefresh } from '../icons';
+import { usePlatforms, PlatformToggle, ClankerWalletResult } from '../clanker-ui';
+
+// one wallet on the selected platforms
+const fetchBoth = (wallet, pf) => Promise.all([pf.pons ? fetchWallet(wallet) : null, pf.clanker ? fetchClankerWallet(wallet) : null])
+  .then(([pons, clanker]) => ({ pons, clanker, ethUsd: pons?.ethUsd || clanker?.ethUsd }));
+const totals = res => {
+  const t = res.pons ? walletEthTotals(res.pons) : { pending: 0n, escrow: 0n };
+  return { ...t, clanker: res.clanker?.owed || 0n, n: (res.pons?.tokens.length || 0) + (res.clanker?.tokens.length || 0) };
+};
 
 export default function Multi() {
   const [input, setInput] = useState('');
@@ -12,6 +21,7 @@ export default function Multi() {
   const [results, setResults] = useState([]);
   const [err, setErr] = useState('');
   const w = useWallet();
+  const [pf, togglePf] = usePlatforms();
 
   // wallet connected / switched in MetaMask → add to the list if missing
   useEffect(() => {
@@ -27,7 +37,7 @@ export default function Multi() {
     setResults([...list]);
     // sequential to avoid public RPC rate limits
     for (let i = 0; i < list.length; i++) {
-      try { list[i] = { ...list[i], res: await fetchWallet(list[i].wallet), loading: false }; }
+      try { list[i] = { ...list[i], res: await fetchBoth(list[i].wallet, pf), loading: false }; }
       catch (e) { list[i] = { ...list[i], err: e.message, loading: false }; }
       setResults([...list]);
     }
@@ -38,18 +48,19 @@ export default function Multi() {
   async function recheck(wallet) {
     const upd = patch => setResults(rs => rs.map(r => r.wallet === wallet ? { ...r, ...patch } : r));
     upd({ loading: true, err: '' });
-    try { upd({ res: await fetchWallet(wallet), loading: false }); }
+    try { upd({ res: await fetchBoth(wallet, pf), loading: false }); }
     catch (e) { upd({ err: e.message, loading: false }); }
   }
 
   const done = results.filter(r => r.res);
   const ethUsd = done.find(r => r.res.ethUsd)?.res.ethUsd;
-  const sum = done.reduce((s, r) => { const t = walletEthTotals(r.res); return { p: s.p + t.pending, e: s.e + t.escrow, n: s.n + r.res.tokens.length }; }, { p: 0n, e: 0n, n: 0 });
-  const totalEth = toEth(sum.p + sum.e);
+  const sum = done.reduce((s, r) => { const t = totals(r.res); return { p: s.p + t.pending, e: s.e + t.escrow, c: s.c + t.clanker, n: s.n + t.n }; }, { p: 0n, e: 0n, c: 0n, n: 0 });
+  const totalEth = toEth(sum.p + sum.e + sum.c);
 
   return (
     <>
       <PageHeader icon={IconWallets} title="Check multiple wallets" desc="Paste wallets, one per line (or separated by commas / spaces). Wallets are checked one after another." />
+      <PlatformToggle value={pf} onToggle={togglePf} disabled={loading} />
       <form className="search area" onSubmit={check}>
         <textarea rows={4} placeholder={'0x…\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
         <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
@@ -61,31 +72,33 @@ export default function Multi() {
           <Stats items={[
             { label: 'Wallets', value: `${done.length}/${results.length}` },
             { label: 'Token', value: sum.n },
-            { label: 'To sweep + escrow', value: `${fmt(sum.p + sum.e)} ETH` },
+            { label: 'Pons (sweep + escrow)', value: `${fmt(sum.p + sum.e)} ETH` },
+            { label: 'Clanker', value: `${fmt(sum.c)} ETH` },
             { label: 'Total claimable', value: ethUsd ? fmtUsd(totalEth * ethUsd) : '—', accent: true },
           ]} />
 
           <div className="card table-wrap">
             <table className="table">
-              <thead><tr><th>Wallet</th><th>Tokens</th><th>To sweep</th><th>Escrow</th><th>USD</th><th /></tr></thead>
+              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker</th><th>USD</th><th /></tr></thead>
               <tbody>
                 {results.map(r => {
-                  const t = r.res && walletEthTotals(r.res);
+                  const t = r.res && totals(r.res);
                   return (
                     <tr key={r.wallet}>
                       <td><a className="mono" href={`#w-${r.wallet}`}>{short(r.wallet)}</a></td>
                       {r.res ? (
                         <>
-                          <td>{r.res.tokens.length}</td>
-                          <td>{fmt(t.pending)} ETH</td>
-                          <td>{fmt(t.escrow)} ETH</td>
-                          <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow) * ethUsd) : '—'}</td>
+                          <td>{t.n}</td>
+                          <td>{r.res.pons ? `${fmt(t.pending)} ETH` : '—'}</td>
+                          <td>{r.res.pons ? `${fmt(t.escrow)} ETH` : '—'}</td>
+                          <td>{r.res.clanker ? `${fmt(t.clanker)} ETH` : '—'}</td>
+                          <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker) * ethUsd) : '—'}</td>
                           <td><a href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small">Blockscout</a></td>
                         </>
                       ) : r.loading ? (
-                        <td colSpan={5}><span className="loading inline"><span className="spin" />Checking…</span></td>
+                        <td colSpan={6}><span className="loading inline"><span className="spin" />Checking…</span></td>
                       ) : (
-                        <td colSpan={5}>
+                        <td colSpan={6}>
                           <span className="err">{r.err}</span>{' '}
                           <button type="button" className="btn-ghost sm" disabled={loading} onClick={() => recheck(r.wallet)}><IconRefresh />Retry</button>
                         </td>
@@ -99,8 +112,9 @@ export default function Multi() {
 
           {done.map(r => (
             <details key={r.wallet} id={`w-${r.wallet}`} className="fold" open={done.length === 1}>
-              <summary><span className="mono">{r.wallet}</span><span className="muted"> · {r.res.tokens.length} token</span></summary>
-              <WalletResult res={r.res} />
+              <summary><span className="mono">{r.wallet}</span><span className="muted"> · {totals(r.res).n} token</span></summary>
+              {r.res.pons && <WalletResult res={r.res.pons} />}
+              {r.res.clanker && <ClankerWalletResult res={r.res.clanker} ethUsd={r.res.ethUsd} onReload={() => recheck(r.wallet)} />}
             </details>
           ))}
         </>

@@ -13,10 +13,10 @@ import { distributorOf, createDistributorTx, routeToTx } from '../../lib/launch'
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker' };
 const DRAFT = 'checkfee_launch_draft';
 // ticker: A-Z 0-9 only, uppercase · name: letters/digits/spaces only · contract limits per platform
-const LIMIT = { pons: { name: 64, symbol: 16 }, clanker: { name: 99, symbol: 30 } };
+const LIMIT = { pons: { name: 64, symbol: 16 }, clanker: { name: 64, symbol: 16 } };
 const CLEAN = {
-  symbol: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30),
-  name: v => v.replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 99),
+  symbol: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16),
+  name: v => v.replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 64),
 };
 const FEES = [0, 1, 2, 3, 4, 5]; // trading fee %, Clanker minimum is 1
 const DESTS = [
