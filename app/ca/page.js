@@ -6,7 +6,9 @@ import {
 } from '../ui';
 import { IconCoin } from '../icons';
 import { zeroAddress, getAddress } from 'viem';
-import { usePlatforms, PlatformToggle, TaxCAResult, ponsOn, taxJobs } from '../tax-ui';
+import { usePlatforms, PlatformToggle, ponsOn, taxJobs } from '../tax-ui';
+import { TokenTable, rowsOf, SourceList } from '../check-ui';
+import { claimPlan, ClaimSteps } from '../ui';
 import { CHAIN_IDS } from '../../lib/chains';
 import { TAX, TAX_KEYS, taxPlatformOf } from '../../lib/tax';
 
@@ -41,45 +43,58 @@ export default function ByCA() {
   const check = e => { e.preventDefault(); run(); };
 
   const ok = res ? res.tokens.filter(t => !t.error) : [];
-  const pending = ok.filter(t => t.quote === zeroAddress).reduce((a, t) => a + BigInt(t.estimatedCreator), 0n);
+  const ponsOf = w => ok.filter(t => (t.splitter ? t.splitter.creator : t.creatorFeeRecipient) === w);
+  const ethUsd = res?.ethUsd || clk?.[0]?.ethUsd;
+  // one claim row per fee recipient and platform/network
+  const sources = [
+    ...(res?.recipients || []).map(r => {
+      const mine = ponsOf(r.wallet);
+      const pend = mine.filter(t => t.quote === zeroAddress).reduce((a, t) => a + BigInt(t.estimatedCreator), 0n);
+      const esc = BigInt(r.escrow.find(a => a.asset === zeroAddress)?.balance || 0);
+      return { key: 'pons', pf: 'pons', chainId: 4663, wallet: r.wallet, amount: pend + esc, tokens: mine.length, calls: claimPlan(mine, r.escrow).calls };
+    }),
+    ...(clk || []).flatMap(c => c.recipients.map(r => ({ key: c.platform + c.chainId, pf: c.platform, chainId: c.chainId, wallet: r.wallet, amount: r.owed, tokens: c.tokens.filter(t => t.recipient === r.wallet).length }))),
+  ];
+  const rows = rowsOf({ pons: res, tax: clk || [] });
+  const total = sources.reduce((a, s) => a + s.amount, 0n);
 
   return (
     <>
-      <PageHeader icon={IconCoin} title="Check by CA" desc="Enter one or more Pons v2 / Clanker / o1 token contract addresses to see unclaimed fees and each token's fee recipient." />
-      <PlatformToggle value={pf} onToggle={togglePf} disabled={loading} />
-      <form className="search area" onSubmit={check}>
-        <textarea rows={3} placeholder={'Token CA, one per line\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
-        <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
-      </form>
+      <PageHeader icon={IconCoin} title="Check by CA" desc="Token contract addresses → unclaimed fees and who can claim them." />
+      <div className="card ck-toolbar">
+        <form className="search area" onSubmit={check}>
+          <textarea rows={3} placeholder={'Token CA, one per line\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
+          <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
+        </form>
+        <div className="ck-filters"><PlatformToggle value={pf} onToggle={togglePf} disabled={loading} /></div>
+      </div>
       {loading && <Spinner />}
       {err && <ErrorLine msg={err} onRetry={input.trim() ? run : null} disabled={loading} />}
 
-      {res && (
-        <>
-          <Stats items={[
-            { label: 'Token', value: `${ok.length}/${res.tokens.length}` },
-            { label: 'Fee recipients', value: res.recipients.length },
-            { label: 'To sweep (est.)', value: `${fmt(pending)} ETH` },
-            { label: 'Value', value: res.ethUsd ? fmtUsd(toEth(pending) * res.ethUsd) : '—', accent: true },
-          ]} />
-
-          <h3>Token</h3>
-          <div className="tokens">
-            {res.tokens.map(t => <TokenCard key={t.token} t={t} ethUsd={res.ethUsd} mode="ca" />)}
+      {(res || clk?.length) ? (
+        <section className="ck">
+          <div className="card ck-summary">
+            <div className="ck-head">
+              <div><span className="muted small">Tokens</span><b className="ck-count">{rows.filter(r => !r.error).length}/{rows.length}</b></div>
+              <div className="ck-total">
+                <span className="muted small">Total claimable</span>
+                <b>{ethUsd ? fmtUsd(toEth(total) * ethUsd) : '—'}</b>
+                <small className="muted">{fmt(total)} ETH · {sources.length} fee recipient{sources.length === 1 ? '' : 's'}</small>
+              </div>
+            </div>
+            <SourceList sources={sources} ethUsd={ethUsd} onReload={run} showWallet />
+            <p className="muted small">Claimable is per fee recipient, so it can include fees from their other tokens.</p>
           </div>
-
-          <h3>By fee recipient <span className="muted">· escrow &amp; claim</span></h3>
-          {res.recipients.map(r => (
-            <RecipientBlock key={r.wallet} r={r} tokens={ok.filter(t => (t.splitter ? t.splitter.creator : t.creatorFeeRecipient) === r.wallet)} ethUsd={res.ethUsd} />
-          ))}
-        </>
-      )}
-      {clk?.map(c => (
-        <div key={c.platform + c.chainId}>
-          <h3>{TAX[c.platform].label} · {c.chainId === 8453 ? 'Base' : 'Robinhood'}</h3>
-          <TaxCAResult res={c} ethUsd={c.ethUsd} onReload={run} />
-        </div>
-      ))}
+          <TokenTable rows={rows} ethUsd={ethUsd} />
+          {res && ok.length > 0 && (
+            <details className="info-fold">
+              <summary>Pons details <span className="muted">· sweep status, escrow, manual claim steps</span></summary>
+              <div className="tokens compact">{res.tokens.map(t => <TokenCard key={t.token} t={t} ethUsd={res.ethUsd} mode="ca" />)}</div>
+              {res.recipients.map(r => <ClaimSteps key={r.wallet} wallet={r.wallet} tokens={ponsOf(r.wallet)} escrow={r.escrow} />)}
+            </details>
+          )}
+        </section>
+      ) : null}
     </>
   );
 }

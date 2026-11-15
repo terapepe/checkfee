@@ -5,7 +5,8 @@ import {
   walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER,
 } from '../ui';
 import { IconWallets, IconRefresh } from '../icons';
-import { usePlatforms, PlatformToggle, TaxWalletResult, ponsOn, taxJobs } from '../tax-ui';
+import { usePlatforms, PlatformToggle, ponsOn, taxJobs } from '../tax-ui';
+import { CheckResult } from '../check-ui';
 
 // one wallet on the selected platforms
 const fetchBoth = (wallet, pf) => Promise.all([ponsOn(pf) ? fetchWallet(wallet) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, wallet, id))])
@@ -61,12 +62,14 @@ export default function Multi() {
 
   return (
     <>
-      <PageHeader icon={IconWallets} title="Check multiple wallets" desc="Paste wallets, one per line (or separated by commas / spaces). Wallets are checked one after another." />
-      <PlatformToggle value={pf} onToggle={togglePf} disabled={loading} />
-      <form className="search area" onSubmit={check}>
-        <textarea rows={4} placeholder={'0x…\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
-        <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
-      </form>
+      <PageHeader icon={IconWallets} title="Check multiple wallets" desc="Paste wallets, one per line or separated by commas / spaces." />
+      <div className="card ck-toolbar">
+        <form className="search area" onSubmit={check}>
+          <textarea rows={4} placeholder={'0x…\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
+          <button className="btn-primary" disabled={loading || !input.trim()}>{loading ? 'Checking…' : 'Check'}</button>
+        </form>
+        <div className="ck-filters"><PlatformToggle value={pf} onToggle={togglePf} disabled={loading} /></div>
+      </div>
       {err && <ErrorLine msg={err} />}
 
       {results.length > 0 && (
@@ -117,8 +120,7 @@ export default function Multi() {
           {done.map(r => (
             <details key={r.wallet} id={`w-${r.wallet}`} className="fold" open={done.length === 1}>
               <summary><span className="mono">{r.wallet}</span><span className="muted"> · {totals(r.res).n} token</span></summary>
-              {r.res.pons && <WalletResult res={r.res.pons} />}
-              {r.res.tax.map(t => <TaxWalletResult key={t.platform + t.chainId} res={t} ethUsd={r.res.ethUsd} onReload={() => recheck(r.wallet)} />)}
+              <CheckResult res={r.res} onReload={() => recheck(r.wallet)} />
             </details>
           ))}
         </>
