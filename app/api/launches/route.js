@@ -4,7 +4,8 @@
 export const dynamic = 'force-dynamic';
 
 const SB_URL = process.env.SUPABASE_URL || 'https://qwlpnyjlovdujxpewrip.supabase.co';
-const SB_KEY = process.env.SUPABASE_SECRET_KEY; // writes (server only)
+// writes (server only): accept the usual names for the Supabase secret / service-role key
+const SB_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY;
 // reads: public publishable key (the table has a read-only policy)
 const SB_READ = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_mKIcOZZJCVrJh4nBgicYiQ_Ev2C_kph';
 const TABLE = `${SB_URL}/rest/v1/checkfee_launches`;
@@ -21,7 +22,8 @@ const isHash = h => /^0x[0-9a-fA-F]{64}$/.test(h || '');
 
 export async function GET(req) {
   // /api/launches?status → is the write key configured on the server?
-  if (new URL(req.url).searchParams.has('status')) return Response.json({ canRecord: !!SB_KEY });
+  // names only (never values) of the Supabase variables this deployment sees
+  if (new URL(req.url).searchParams.has('status')) return Response.json({ canRecord: !!SB_KEY, supabaseVars: Object.keys(process.env).filter(k => /SUPABASE/i.test(k)).sort(), env: process.env.VERCEL_ENV || null });
   const r = await fetch(`${TABLE}?select=chain_id,token,platform,pool_id,curve,deployer,block,tx_hash&order=block.desc&limit=5000`, { headers: { apikey: SB_READ }, cache: 'no-store' });
   if (!r.ok) return Response.json({ error: `Supabase HTTP ${r.status}` }, { status: 502 });
   return Response.json(await r.json(), { headers: { 'cache-control': 'public, s-maxage=15, stale-while-revalidate=60' } });
