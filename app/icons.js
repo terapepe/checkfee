@@ -67,3 +67,19 @@ export const IconReceipt = I(<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d=
 export const IconSpark = I(<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" />, S);
 export const IconLayers = I(<><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></>, S);
 export const IconInfo = I(<><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>, { width: 16, height: 16 });
+
+// Network badges (simple original marks, not the official logos): Base = blue, Robinhood Chain = lime
+export function ChainIcon({ id, size = 16, ...p }) {
+  const base = Number(id) === 8453;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-label={base ? 'Base' : 'Robinhood Chain'} role="img" {...p}>
+      <circle cx="12" cy="12" r="11" fill={base ? '#2f6bff' : '#c8f53f'} />
+      {base
+        ? <path d="M8.5 6.8h4.3a2.6 2.6 0 0 1 1.2 4.9 2.8 2.8 0 0 1-1 5.5H8.5zM10.7 8.8v2.3h1.8a1.15 1.15 0 0 0 0-2.3zm0 4.2v2.4h2.1a1.2 1.2 0 0 0 0-2.4z" fill="#fff" />
+        : <path d="M8.5 6.8h4.4a3 3 0 0 1 .9 5.8l2.1 4.6h-2.4l-1.8-4.3h-1v4.3H8.5zm2.2 2v2.6h2a1.3 1.3 0 0 0 0-2.6z" fill="#111" />}
+    </svg>
+  );
+}
+export const ChainBadge = ({ id, label = true }) => (
+  <span className={`chain-badge ${Number(id) === 8453 ? 'base' : 'rh'}`}><ChainIcon id={id} size={14} />{label && (Number(id) === 8453 ? 'Base' : 'Robinhood')}</span>
+);

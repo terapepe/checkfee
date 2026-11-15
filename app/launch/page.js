@@ -8,6 +8,8 @@ const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</sp
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
+import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
+import { ChainIcon, ChainBadge } from '../icons';
 import { distributorOf, createDistributorTx, routeToTx } from '../../lib/launch';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1' };
@@ -35,6 +37,8 @@ export default function Launch() {
   const [pf, setPf] = useState('pons');
   const isC = !!TAX[pf]; // Clanker / o1: same v4 tax launch
   const PL = PLATFORMS[pf];
+  const [net, setNet] = useState(4663);
+  const chainId = isC ? net : 4663; // Pons is Robinhood only
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
   const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : CLEAN[k] ? CLEAN[k](e.target.value) : e.target.value }));
 
@@ -46,6 +50,7 @@ export default function Launch() {
       if (d) {
         if (d.f) setF(v => ({ ...v, ...d.f }));
         if (d.pf) setPf(d.pf);
+        if (CHAINS[d.net]) setNet(d.net);
         if (d.uri) setImg({ file: null, preview: `/api/ipfs/${d.uri.replace('ipfs://', '')}`, uri: d.uri, uploading: false });
       }
     } catch {}
@@ -53,18 +58,18 @@ export default function Launch() {
   }, []);
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem(DRAFT, JSON.stringify({ f, pf, uri: img.uri })); } catch {}
-  }, [f, pf, img.uri, loaded]);
+    try { localStorage.setItem(DRAFT, JSON.stringify({ f, pf, net, uri: img.uri })); } catch {}
+  }, [f, pf, net, img.uri, loaded]);
 
   const [credits, setCredits] = useState(null); // null = loading
   useEffect(() => {
     setInfo(null);
-    (isC ? readTaxInfo(pf) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
-  }, [w.account, pf]);
+    (isC ? readTaxInfo(pf, chainId) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
+  }, [w.account, pf, chainId]);
   useEffect(() => {
     setCredits(null);
-    if (w.account) launchCredits(w.account).then(setCredits).catch(() => setCredits(0));
-  }, [w.account]);
+    if (w.account) launchCredits(w.account, chainId).then(setCredits).catch(() => setCredits(0));
+  }, [w.account, chainId]);
   const free = credits != null && credits > 0;
   const serviceFee = free ? 0n : CHECKFEE_LAUNCH_FEE;
   useEffect(() => { if (w.account) setF(v => (v.payout ? v : { ...v, payout: w.account })); }, [w.account]);
@@ -101,35 +106,35 @@ export default function Launch() {
     try {
       const eth = window.ethereum;
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
-      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
+      await switchChain(eth, chainId);
       // simulate the launch first so no fee is charged for a launch that would fail
       if (isC) setSt({ step: `Preparing ${PL} launch…` });
       // contractURI JSON (image, description, links) — o1 shows the token from it
       const contractURI = isC ? await pinContractMeta(contractMeta(f, img.uri)) : '';
-      const tx = isC ? await buildTaxTx(pf, { account: from, form: f, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
+      const tx = isC ? await buildTaxTx(pf, chainId, { account: from, form: f, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
       // unused credit (fee paid, not yet launched) → don't charge again
-      const left = await launchCredits(from);
+      const left = await launchCredits(from, chainId);
       if (left > 0) {
         setSt({ step: 'Confirm the launch in MetaMask…' });
       } else {
         setSt({ step: 'Step 1/2: CheckFee service fee 0.00003 ETH…' });
         const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: CHECKFEE_WALLET, value: '0x' + CHECKFEE_LAUNCH_FEE.toString(16) }] });
-        const rc0 = await waitReceipt(h);
+        const rc0 = await waitOn(chainId, h);
         if (rc0.status !== 'success') throw new Error('Service fee transfer failed');
-        markFeePaid(from);
+        markFeePaid(from, chainId);
         setCredits(1);
         setSt({ step: 'Step 2/2: confirm the launch in MetaMask…' });
       }
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
       setSt({ step: 'Waiting for on-chain confirmation…', hash });
-      const rc = await waitReceipt(hash);
+      const rc = await waitOn(chainId, hash);
       if (rc.status !== 'success') throw new Error('Launch transaction failed');
-      clearFeePaid(from);
+      clearFeePaid(from, chainId);
       try { localStorage.removeItem(DRAFT); } catch {}
-      const L = isC ? parseTaxLaunch(pf, rc.logs) : parseLaunch(rc.logs);
+      const L = isC ? parseTaxLaunch(pf, chainId, rc.logs) : parseLaunch(rc.logs);
       const note = L?.token && holders ? await shareWithHolders(eth, from, L.token) : '';
       if (note) { setSt({ step: '', hash, token: '', err: note, link: `/launches/${L.token}` }); return; }
-      if (L?.token) { location.href = `/launches/${L.token}`; return; } // go straight to the token page
+      if (L?.token) { location.href = `/launches/${L.token}${chainId === 4663 ? '' : `?chain=${chainId}`}`; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
     } catch (er) {
       setSt(s => ({ ...s, step: '', err: er.code === 4001 ? 'Cancelled in MetaMask' : (er.shortMessage || er.message || String(er)) }));
@@ -170,7 +175,7 @@ export default function Launch() {
               <div className="tk-links">
                 <span className="mono">{st.token}</span>
                 <a className="pill" href={`${PONS}/${st.token}`} target="_blank" rel="noreferrer">Pons <IconExternal /></a>
-                <a className="pill" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Tx <IconExternal /></a>
+                <a className="pill" href={`${CHAINS[chainId].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">Tx <IconExternal /></a>
               </div>
             </div>
           </div>
@@ -190,6 +195,12 @@ export default function Launch() {
         : 'Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost.'} />
       <div className="seg" style={{ marginBottom: 16 }}>
         {Object.entries(PLATFORMS).map(([k, v]) => <button key={k} type="button" className={pf === k ? 'on' : ''} onClick={() => { setPf(k); if (TAX[k]) setF(v => (Number(v.fee) < 1 ? { ...v, fee: 1 } : v)); }} disabled={!!st.step}>{v}</button>)}
+      </div>
+      <div className="net-row">
+        <span className="muted small">Network</span>
+        {isC
+          ? <div className="seg">{CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setNet(id)} disabled={!!st.step}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
+          : <ChainBadge id={4663} />}
       </div>
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
@@ -249,7 +260,7 @@ export default function Launch() {
           {info && !info.canLaunch && <ErrorLine msg={isC ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
           <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || 'Launch with MetaMask'}</button>
-          {st.hash && <a className="mono small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
+          {st.hash && <a className="mono small" href={`${CHAINS[chainId].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
           {!lenOk && <ErrorLine msg={`${PLATFORMS[pf]} allows a name up to ${lim.name} and a ticker up to ${lim.symbol} characters.`} />}
           {st.err && <ErrorLine msg={st.err} />}
           {st.link && <a className="pill" href={st.link}>Open the token page</a>}

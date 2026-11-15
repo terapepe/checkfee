@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Stats, ErrorLine, EXPLORER, short, fmt, fmtUsd, toEth, useWallet } from './ui';
 import { IconWallet, IconExternal } from './icons';
 import { TAX, taxClaimTx } from '../lib/tax';
+import { switchChain, waitOn } from '../lib/chains';
 import { waitTx } from '../lib/market';
 
 const KEY = 'checkfee_platforms';
@@ -34,7 +35,7 @@ export function PlatformToggle({ value, onToggle, disabled }) {
   );
 }
 
-export function TaxClaim({ pf, wallet, owed, onDone }) {
+export function TaxClaim({ pf, chainId = 4663, wallet, owed, onDone }) {
   const w = useWallet();
   const [st, setSt] = useState({ busy: '', err: '', hash: '' });
   if (!owed) return null;
@@ -44,11 +45,11 @@ export function TaxClaim({ pf, wallet, owed, onDone }) {
     setSt({ busy: 'Confirm in MetaMask…', err: '', hash: '' });
     try {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
-      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
-      const tx = taxClaimTx(pf, wallet);
+      await switchChain(eth, chainId);
+      const tx = taxClaimTx(pf, chainId, wallet);
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
       setSt({ busy: 'Confirming…', err: '', hash });
-      const rc = await waitTx(hash);
+      const rc = await waitOn(chainId, hash);
       if (rc.status !== 'success') throw new Error('Claim failed');
       setSt({ busy: '', err: '', hash }); onDone?.();
     } catch (e) { setSt({ busy: '', err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message), hash: '' }); }
@@ -86,7 +87,7 @@ export function TaxWalletResult({ res, ethUsd, onReload }) {
         { label: 'Token', value: res.tokens.length },
         { label: 'In escrow', value: `${fmt(res.owed)} ETH` },
         { label: 'Total claimable', value: ethUsd ? fmtUsd(owedEth * ethUsd) : `${fmt(res.owed)} ETH`, accent: true,
-          action: <TaxClaim pf={res.platform} wallet={res.wallet} owed={res.owed} onDone={onReload} /> },
+          action: <TaxClaim pf={res.platform} chainId={res.chainId} wallet={res.wallet} owed={res.owed} onDone={onReload} /> },
       ]} />
       <p className="muted small">{L} credits creator fees to the escrow on every trade, so there is nothing to sweep: one claim pays all of this wallet's {L} fees in ETH.</p>
       {res.tokens.length === 0 ? <p className="empty">No {L} tokens created by, or with fees assigned to, this wallet.</p>
@@ -110,7 +111,7 @@ export function TaxCAResult({ res, ethUsd, onReload }) {
             <IconWallet /><span className="muted">Fee recipient</span><em className="tag">{L}</em>
             <a className="mono" href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer">{r.wallet}</a>
             <b>{fmt(r.owed)} ETH</b>{ethUsd ? <span className="muted">{fmtUsd(toEth(r.owed) * ethUsd)}</span> : null}
-            <TaxClaim pf={res.platform} wallet={r.wallet} owed={r.owed} onDone={onReload} />
+            <TaxClaim pf={res.platform} chainId={res.chainId} wallet={r.wallet} owed={r.owed} onDone={onReload} />
           </div>
           <p className="muted small">Claimable covers all of this wallet's {L} tokens.</p>
         </section>

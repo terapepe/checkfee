@@ -23,7 +23,7 @@ export default function ByCA() {
     setErr(''); setLoading(true); setRes(null); setClk(null);
     try {
       // sort CAs by platform (Clanker factory knows its tokens), skip a platform that is switched off
-      const kind = await Promise.all(list.map(a => taxPlatformOf(getAddress(a)).catch(() => null)));
+      const kind = await Promise.all(list.map(a => taxPlatformOf(getAddress(a), [4663]).then(k => k?.pf || null).catch(() => null))); // Check pages: Robinhood
       const po = list.filter((_, i) => !kind[i]);
       const [p, ...tax] = await Promise.all([
         pf.pons && po.length ? fetchTokens(po) : null,

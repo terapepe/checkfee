@@ -2,11 +2,12 @@
 // Token page for a Clanker / o1 token (Uniswap v4 pool, fees credited to the platform escrow)
 import { useEffect, useState, useCallback } from 'react';
 import { formatEther, formatUnits } from 'viem';
-import { holdersOf, blockTime, getLogsChunked, ipfsUrl, waitTx } from '../../../lib/market';
-import { TAX, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx, contractMeta, pinContractMeta, setContractUriTx } from '../../../lib/tax';
-import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, useWallet, fmt, fmtUsd, toEth } from '../../ui';
+import { ipfsUrl } from '../../../lib/market';
+import { CHAINS, holdersOn, blockTimeOn, switchChain, waitOn } from '../../../lib/chains';
+import { TAX, taxUrl, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx, contractMeta, pinContractMeta, setContractUriTx } from '../../../lib/tax';
+import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
-import { IconExternal, IconCopy, IconCheck } from '../../icons';
+import { IconExternal, IconCopy, IconCheck, ChainBadge } from '../../icons';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
 
@@ -15,8 +16,10 @@ function CopyAddr({ a }) {
   return <button type="button" className="icon-btn" onClick={() => { navigator.clipboard.writeText(a); setOk(true); setTimeout(() => setOk(false), 1000); }}>{ok ? <IconCheck /> : <IconCopy />}</button>;
 }
 
-export default function TaxTokenPage({ pf, token }) {
+export default function TaxTokenPage({ pf, chainId, token }) {
   const P = TAX[pf];
+  const EXPLORER = CHAINS[chainId].explorer;
+  const url = t => taxUrl(pf, t, chainId);
   const w = useWallet();
   const [s, setS] = useState(null);
   const [trades, setTrades] = useState([]);
@@ -28,11 +31,11 @@ export default function TaxTokenPage({ pf, token }) {
 
   const load = useCallback(async () => {
     try {
-      const [sum, lb, px, h] = await Promise.all([taxSummary(pf, token), taxLaunchBlock(pf, token), getEthUsd(), holdersOf(token)]);
-      const [trs, t0] = lb ? await Promise.all([taxTrades(sum.poolId, sum.tokenIs0, lb, getLogsChunked), blockTime(lb)]) : [[], null];
+      const [sum, lb, px, h] = await Promise.all([taxSummary(pf, chainId, token), taxLaunchBlock(pf, chainId, token), getEthUsd(), holdersOn(chainId, token)]);
+      const [trs, t0] = lb ? await Promise.all([taxTrades(pf, chainId, sum.poolId, sum.tokenIs0, lb), blockTimeOn(chainId, lb)]) : [[], null];
       setS({ ...sum, logo: ipfsUrl(sum.image), time: t0 }); setTrades(trs); setEthUsd(px); setHolders(h);
     } catch (e) { setErr(e.shortMessage || e.message); }
-  }, [pf, token]);
+  }, [pf, chainId, token]);
   useEffect(() => { load(); }, [load]);
 
   if (err) return <ErrorLine msg={err} onRetry={() => { setErr(''); load(); }} />;
@@ -56,12 +59,12 @@ export default function TaxTokenPage({ pf, token }) {
       <div className="tp-head">
         <Logo t={s} size={64} />
         <div className="tp-name">
-          <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">{P.label}</em></h1>
+          <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">{P.label}</em><ChainBadge id={chainId} /></h1>
           <div className="muted small tp-sub">
             by <a className="mono" href={`${EXPLORER}/address/${s.deployer}`} target="_blank" rel="noreferrer">{short(s.deployer)}</a>
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
-            <a className="pill" href={P.url(s.token)} target="_blank" rel="noreferrer">{P.label} <IconExternal /></a>
+            <a className="pill" href={url(s.token)} target="_blank" rel="noreferrer">{P.label} <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>
         </div>
@@ -94,7 +97,7 @@ export default function TaxTokenPage({ pf, token }) {
             <div><span>Fee</span><b>{s.buyTax}% buy / {s.sellTax}% sell</b></div>
           </div>
 
-          {!s.contractURI && s.metadataEditable && w.account?.toLowerCase() === s.creator.toLowerCase() && <MetaFix pf={pf} s={s} onDone={load} />}
+          {!s.contractURI && s.metadataEditable && w.account?.toLowerCase() === s.creator.toLowerCase() && <MetaFix pf={pf} chainId={chainId} s={s} onDone={load} />}
           {s.description && (<><h3>About</h3><p className="tp-about">{s.description}</p></>)}
 
           <div className="lp-tabs">
@@ -143,9 +146,9 @@ export default function TaxTokenPage({ pf, token }) {
         <div className="tp-side">
           <div className="card tradebox">
             <p className="muted">Trades on a Uniswap v4 pool ({s.buyTax}% buy / {s.sellTax}% sell fee).</p>
-            <a className="btn-primary big-btn" href={P.url(s.token)} target="_blank" rel="noreferrer">Trade on {P.label} <IconExternal /></a>
+            <a className="btn-primary big-btn" href={url(s.token)} target="_blank" rel="noreferrer">Trade on {P.label} <IconExternal /></a>
           </div>
-          <TaxFeeBox pf={pf} recipient={s.creatorFeeRecipient} account={w.account} connect={w.connect} ethUsd={ethUsd} />
+          <TaxFeeBox pf={pf} chainId={chainId} recipient={s.creatorFeeRecipient} account={w.account} connect={w.connect} ethUsd={ethUsd} />
         </div>
       </div>
     </div>
@@ -153,12 +156,13 @@ export default function TaxTokenPage({ pf, token }) {
 }
 
 // Creator fees sit in the platform escrow (per recipient, all their Clanker tokens); claimFor pays the recipient
-function TaxFeeBox({ pf, recipient, account, connect, ethUsd }) {
+function TaxFeeBox({ pf, chainId, recipient, account, connect, ethUsd }) {
   const L = TAX[pf].label;
+  const EXPLORER = CHAINS[chainId].explorer;
   const [owed, setOwed] = useState(null);
   const [err, setErr] = useState('');
   const [st, setSt] = useState({ busy: '', hash: '' });
-  const load = useCallback(() => { setErr(''); taxOwed(pf, recipient).then(setOwed).catch(e => setErr(e.shortMessage || e.message)); }, [pf, recipient]);
+  const load = useCallback(() => { setErr(''); taxOwed(pf, chainId, recipient).then(setOwed).catch(e => setErr(e.shortMessage || e.message)); }, [pf, chainId, recipient]);
   useEffect(() => { load(); }, [load]);
 
   async function claim() {
@@ -166,11 +170,11 @@ function TaxFeeBox({ pf, recipient, account, connect, ethUsd }) {
     setSt({ busy: 'Confirm the claim in MetaMask…', hash: '' }); setErr('');
     try {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
-      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
-      const tx = taxClaimTx(pf, recipient);
+      await switchChain(eth, chainId);
+      const tx = taxClaimTx(pf, chainId, recipient);
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
       setSt({ busy: 'Waiting for confirmation…', hash });
-      const rc = await waitTx(hash);
+      const rc = await waitOn(chainId, hash);
       if (rc.status !== 'success') throw new Error('Claim failed');
       setSt({ busy: '', hash }); load();
     } catch (e) {
@@ -202,7 +206,7 @@ function TaxFeeBox({ pf, recipient, account, connect, ethUsd }) {
 }
 
 // Token launched without contractURI: the creator publishes it (image, description, links) so the launchpad site shows them
-function MetaFix({ pf, s, onDone }) {
+function MetaFix({ pf, chainId, s, onDone }) {
   const [st, setSt] = useState({ busy: '', err: '' });
   async function run() {
     const eth = window.ethereum;
@@ -211,12 +215,12 @@ function MetaFix({ pf, s, onDone }) {
       const soc = s.socials || {};
       const uri = await pinContractMeta(contractMeta({ name: s.name, symbol: s.symbol, description: s.description, ...soc }, s.image));
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
-      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
+      await switchChain(eth, chainId);
       setSt({ busy: 'Confirm in MetaMask…', err: '' });
-      const tx = setContractUriTx(pf, s.token, uri);
+      const tx = setContractUriTx(pf, chainId, s.token, uri);
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
       setSt({ busy: 'Confirming…', err: '' });
-      const rc = await waitTx(hash);
+      const rc = await waitOn(chainId, hash);
       if (rc.status !== 'success') throw new Error('Transaction failed');
       setSt({ busy: '', err: '' }); onDone?.();
     } catch (e) { setSt({ busy: '', err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message) }); }

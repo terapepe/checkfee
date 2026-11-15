@@ -345,3 +345,8 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
 .ctk:hover { border-color: var(--accent); }
 .ctk-amt { text-align: right; }
 @media (max-width: 640px) { .ctk { grid-template-columns: 1fr; gap: 4px; } .ctk-amt { text-align: left; } }
+.chain-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 8px 2px 3px; border-radius: 999px; border: 1px solid var(--line); vertical-align: middle; margin-left: 6px; }
+.chain-badge.base { color: #6f97ff; border-color: rgba(47, 107, 255, .45); }
+.chain-badge.rh { color: var(--accent); border-color: rgba(200, 245, 63, .4); }
+.seg button .chain-ic { vertical-align: -3px; margin-right: 6px; }
+.net-row { display: flex; align-items: center; gap: 10px; margin: -6px 0 16px; }

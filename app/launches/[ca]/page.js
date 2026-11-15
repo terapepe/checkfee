@@ -9,7 +9,7 @@ import {
 import { client, ADDR, checkTokens } from '../../../lib/pons';
 import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet, ClaimAll, claimPlan, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
-import { IconExternal, IconCopy, IconCheck } from '../../icons';
+import { IconExternal, IconCopy, IconCheck, ChainBadge } from '../../icons';
 import { taxPlatformOf } from '../../../lib/tax';
 import TaxTokenPage from './tax';
 
@@ -37,10 +37,12 @@ export default function TokenPage() {
   const [kind, setKind] = useState(null);
   useEffect(() => {
     if (!isAddress(ca || '', { strict: false })) { setKind('pons'); return; }
-    taxPlatformOf(getAddress(ca)).then(k => setKind(k || 'pons')).catch(() => setKind('pons'));
+    // ?chain=8453 → Base; no param → Robinhood first, then Base
+    const q = Number(new URLSearchParams(location.search).get('chain'));
+    taxPlatformOf(getAddress(ca), q ? [q] : undefined).then(k => setKind(k || 'pons')).catch(() => setKind('pons'));
   }, [ca]);
   if (!kind) return <Spinner text="Loading token data…" />;
-  return kind === 'pons' ? <PonsTokenPage /> : <TaxTokenPage pf={kind} token={getAddress(ca)} />;
+  return kind === 'pons' ? <PonsTokenPage /> : <TaxTokenPage pf={kind.pf} chainId={kind.chainId} token={getAddress(ca)} />;
 }
 
 function PonsTokenPage() {
@@ -88,7 +90,7 @@ function PonsTokenPage() {
       <div className="tp-head">
         <Logo t={s} size={64} />
         <div className="tp-name">
-          <h1>{s.name} <span className="muted">{s.symbol}</span></h1>
+          <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">Pons</em><ChainBadge id={4663} /></h1>
           <div className="muted small tp-sub">
             by <a className="mono" href={`${EXPLORER}/address/${s.deployer}`} target="_blank" rel="noreferrer">{short(s.deployer)}</a>
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
