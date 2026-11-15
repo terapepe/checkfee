@@ -449,13 +449,13 @@ export function fetchTokens(cas) {
 }
 
 // tax launchpads (pf = 'clanker' | 'o1')
-export function fetchTaxWallet(pf, wallet) {
+export function fetchTaxWallet(pf, wallet, chainId = 4663) {
   if (!isAddress(wallet, { strict: false })) return Promise.reject(new Error('Invalid wallet address'));
-  return withRetry(() => checkTaxWallet(pf, wallet));
+  return withRetry(() => checkTaxWallet(pf, wallet, chainId));
 }
 
-export function fetchTaxTokens(pf, cas) {
-  return withRetry(() => checkTaxTokens(pf, cas));
+export function fetchTaxTokens(pf, cas, chainId = 4663) {
+  return withRetry(() => checkTaxTokens(pf, cas, chainId));
 }
 
 export function parseAddresses(text) {

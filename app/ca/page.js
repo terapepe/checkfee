@@ -6,7 +6,8 @@ import {
 } from '../ui';
 import { IconCoin } from '../icons';
 import { zeroAddress, getAddress } from 'viem';
-import { usePlatforms, PlatformToggle, TaxCAResult } from '../tax-ui';
+import { usePlatforms, PlatformToggle, TaxCAResult, ponsOn, taxJobs } from '../tax-ui';
+import { CHAIN_IDS } from '../../lib/chains';
 import { TAX, TAX_KEYS, taxPlatformOf } from '../../lib/tax';
 
 export default function ByCA() {
@@ -23,11 +24,13 @@ export default function ByCA() {
     setErr(''); setLoading(true); setRes(null); setClk(null);
     try {
       // sort CAs by platform (Clanker factory knows its tokens), skip a platform that is switched off
-      const kind = await Promise.all(list.map(a => taxPlatformOf(getAddress(a), [4663]).then(k => k?.pf || null).catch(() => null))); // Check pages: Robinhood
+      // which platform + network each CA belongs to (only the networks switched on)
+      const nets = CHAIN_IDS.filter(id => pf[`n${id}`]);
+      const kind = await Promise.all(list.map(a => taxPlatformOf(getAddress(a), nets).catch(() => null)));
       const po = list.filter((_, i) => !kind[i]);
       const [p, ...tax] = await Promise.all([
-        pf.pons && po.length ? fetchTokens(po) : null,
-        ...TAX_KEYS.map(k => { const cas = list.filter((_, i) => kind[i] === k); return pf[k] && cas.length ? fetchTaxTokens(k, cas) : null; }),
+        ponsOn(pf) && po.length ? fetchTokens(po) : null,
+        ...taxJobs(pf).map(([k, id]) => { const cas = list.filter((_, i) => kind[i]?.pf === k && kind[i]?.chainId === id); return cas.length ? fetchTaxTokens(k, cas, id) : null; }),
       ]);
       const t = tax.filter(Boolean);
       if (!p && !t.length) throw new Error('No token found on the selected platforms');
@@ -72,8 +75,8 @@ export default function ByCA() {
         </>
       )}
       {clk?.map(c => (
-        <div key={c.platform}>
-          <h3>{TAX[c.platform].label}</h3>
+        <div key={c.platform + c.chainId}>
+          <h3>{TAX[c.platform].label} · {c.chainId === 8453 ? 'Base' : 'Robinhood'}</h3>
           <TaxCAResult res={c} ethUsd={c.ethUsd} onReload={run} />
         </div>
       ))}

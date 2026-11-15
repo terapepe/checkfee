@@ -350,3 +350,7 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
 .chain-badge.rh { color: var(--accent); border-color: rgba(200, 245, 63, .4); }
 .seg button .chain-ic { vertical-align: -3px; margin-right: 6px; }
 .net-row { display: flex; align-items: center; gap: 10px; margin: -6px 0 16px; }
+.pf-toggles { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 4px; }
+.pf-toggles .pf-toggle { margin: 0; }
+.pf-toggle > .muted { min-width: 62px; }
+.chip.net { display: inline-flex; align-items: center; gap: 6px; padding-left: 8px; }

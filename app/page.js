@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { WalletResult, fetchWallet, fetchTaxWallet, useWallet, PageHeader, ErrorLine, Spinner } from './ui';
-import { usePlatforms, PlatformToggle, TaxWalletResult } from './tax-ui';
-import { TAX_KEYS } from '../lib/tax';
+import { usePlatforms, PlatformToggle, TaxWalletResult, ponsOn, taxJobs } from './tax-ui';
 import { IconWallet, IconSearch } from './icons';
 
 export default function Home() {
@@ -17,7 +16,7 @@ export default function Home() {
     setLoading(true); setErr(''); setRes(null);
     try {
       const a = addr.trim();
-      const [pons, ...tax] = await Promise.all([pf.pons ? fetchWallet(a) : null, ...TAX_KEYS.map(k => (pf[k] ? fetchTaxWallet(k, a) : null))]);
+      const [pons, ...tax] = await Promise.all([ponsOn(pf) ? fetchWallet(a) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, a, id))]);
       setRes({ pons, tax: tax.filter(Boolean) });
     } catch (e) { setErr(e.message); }
     setLoading(false);
@@ -54,7 +53,7 @@ export default function Home() {
       {loading && <Spinner />}
       {err && <ErrorLine msg={err} onRetry={wallet.trim() ? () => run(wallet) : null} disabled={loading} />}
       {res?.pons && <WalletResult res={res.pons} />}
-      {res?.tax.map(t => <TaxWalletResult key={t.platform} res={t} ethUsd={t.ethUsd} onReload={() => run(wallet)} />)}
+      {res?.tax.map(t => <TaxWalletResult key={t.platform + t.chainId} res={t} ethUsd={t.ethUsd} onReload={() => run(wallet)} />)}
     </>
   );
 }

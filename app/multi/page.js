@@ -5,15 +5,14 @@ import {
   walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER,
 } from '../ui';
 import { IconWallets, IconRefresh } from '../icons';
-import { usePlatforms, PlatformToggle, TaxWalletResult } from '../tax-ui';
-import { TAX_KEYS } from '../../lib/tax';
+import { usePlatforms, PlatformToggle, TaxWalletResult, ponsOn, taxJobs } from '../tax-ui';
 
 // one wallet on the selected platforms
-const fetchBoth = (wallet, pf) => Promise.all([pf.pons ? fetchWallet(wallet) : null, ...TAX_KEYS.map(k => (pf[k] ? fetchTaxWallet(k, wallet) : null))])
+const fetchBoth = (wallet, pf) => Promise.all([ponsOn(pf) ? fetchWallet(wallet) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, wallet, id))])
   .then(([pons, ...tax]) => { tax = tax.filter(Boolean); return { pons, tax, ethUsd: pons?.ethUsd || tax[0]?.ethUsd }; });
 const totals = res => {
   const t = res.pons ? walletEthTotals(res.pons) : { pending: 0n, escrow: 0n };
-  const owed = k => res.tax.find(x => x.platform === k)?.owed || 0n;
+  const owed = k => res.tax.filter(x => x.platform === k).reduce((a, x) => a + x.owed, 0n); // all networks
   return { ...t, clanker: owed('clanker'), o1: owed('o1'), n: (res.pons?.tokens.length || 0) + res.tax.reduce((a, x) => a + x.tokens.length, 0) };
 };
 const has = (res, k) => res.tax.some(x => x.platform === k);
@@ -119,7 +118,7 @@ export default function Multi() {
             <details key={r.wallet} id={`w-${r.wallet}`} className="fold" open={done.length === 1}>
               <summary><span className="mono">{r.wallet}</span><span className="muted"> · {totals(r.res).n} token</span></summary>
               {r.res.pons && <WalletResult res={r.res.pons} />}
-              {r.res.tax.map(t => <TaxWalletResult key={t.platform} res={t} ethUsd={r.res.ethUsd} onReload={() => recheck(r.wallet)} />)}
+              {r.res.tax.map(t => <TaxWalletResult key={t.platform + t.chainId} res={t} ethUsd={r.res.ethUsd} onReload={() => recheck(r.wallet)} />)}
             </details>
           ))}
         </>
