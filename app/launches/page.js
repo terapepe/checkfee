@@ -70,7 +70,7 @@ export default function Launches() {
             {top.map(t => (
               <a key={t.token} href={`/launches/${t.token}`} className="trend-card">
                 <div className="trend-img"><Logo t={t} size={160} /></div>
-                <div className="trend-meta"><b>{t.name}</b></div>
+                <div className="trend-meta"><b>{t.name}</b> <em className="tag">{t.platform === 'clanker' ? 'Clanker' : 'Pons'}</em></div>
                 <div className="trend-mc">{usdC(ethUsd && t.mcapEth ? t.mcapEth * ethUsd : null)}</div>
               </a>
             ))}
