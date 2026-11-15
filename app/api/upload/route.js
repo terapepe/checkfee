@@ -21,8 +21,10 @@ export async function GET() {
 }
 
 // POST multipart (field "file"): returns ipfs://CID for the launch params
+// POST application/json: token metadata JSON (contractURI, o1 format) → ipfs://CID
 export async function POST(req) {
   if (!JWT) return Response.json({ error: 'Server is missing PINATA_JWT' }, { status: 500 });
+  if ((req.headers.get('content-type') || '').includes('application/json')) return pinJson(req);
   const form = await req.formData().catch(() => null);
   const file = form?.get('file');
   if (!file || typeof file === 'string') return Response.json({ error: 'Missing image file' }, { status: 400 });
@@ -40,4 +42,23 @@ export async function POST(req) {
     return Response.json({ error: j.error?.reason || j.error?.details || j.error || `Pinata HTTP ${r.status}` }, { status: 502 });
   }
   return Response.json({ cid: j.IpfsHash, uri: `ipfs://${j.IpfsHash}`, url: gatewayUrl(j.IpfsHash) });
+}
+
+const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+async function pinJson(req) {
+  const j = await req.json().catch(() => null);
+  if (!j || !str(j.name, 64) || !str(j.symbol, 16)) return Response.json({ error: 'Missing name / symbol' }, { status: 400 });
+  // only the fields a token page needs, size-capped
+  const links = Object.fromEntries(['website', 'twitter', 'telegram', 'discord', 'farcaster'].map(k => [k, str(j.links?.[k], 200)]).filter(([, v]) => v));
+  const meta = {
+    name: str(j.name, 64), symbol: str(j.symbol, 16), description: str(j.description, 500), standard: 'ERC20',
+    image: /^ipfs:\/\/[a-zA-Z0-9]{32,100}$/.test(j.image || '') ? j.image : '', links,
+  };
+  const r = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+    method: 'POST', headers: { Authorization: `Bearer ${JWT}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ pinataContent: meta, pinataMetadata: { name: `checkfee-meta-${meta.symbol}-${Date.now()}` } }),
+  });
+  const o = await r.json().catch(() => ({}));
+  if (!r.ok || !o.IpfsHash) return Response.json({ error: o.error?.reason || o.error?.details || o.error || `Pinata HTTP ${r.status}` }, { status: 502 });
+  return Response.json({ cid: o.IpfsHash, uri: `ipfs://${o.IpfsHash}` });
 }

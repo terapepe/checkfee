@@ -7,7 +7,7 @@ import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, Icon
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
-import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch } from '../../lib/tax';
+import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { distributorOf, createDistributorTx, routeToTx } from '../../lib/launch';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1' };
@@ -104,7 +104,9 @@ export default function Launch() {
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
       // simulate the launch first so no fee is charged for a launch that would fail
       if (isC) setSt({ step: `Preparing ${PL} launch…` });
-      const tx = isC ? await buildTaxTx(pf, { account: from, form: f, image: img.uri, quoteIn }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
+      // contractURI JSON (image, description, links) — o1 shows the token from it
+      const contractURI = isC ? await pinContractMeta(contractMeta(f, img.uri)) : '';
+      const tx = isC ? await buildTaxTx(pf, { account: from, form: f, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
       // unused credit (fee paid, not yet launched) → don't charge again
       const left = await launchCredits(from);
       if (left > 0) {

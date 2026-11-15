@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { formatEther, formatUnits } from 'viem';
 import { holdersOf, blockTime, getLogsChunked, ipfsUrl, waitTx } from '../../../lib/market';
-import { TAX, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx } from '../../../lib/tax';
+import { TAX, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx, contractMeta, pinContractMeta, setContractUriTx } from '../../../lib/tax';
 import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, useWallet, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck } from '../../icons';
@@ -94,6 +94,7 @@ export default function TaxTokenPage({ pf, token }) {
             <div><span>Fee</span><b>{s.buyTax}% buy / {s.sellTax}% sell</b></div>
           </div>
 
+          {!s.contractURI && s.metadataEditable && w.account?.toLowerCase() === s.creator.toLowerCase() && <MetaFix pf={pf} s={s} onDone={load} />}
           {s.description && (<><h3>About</h3><p className="tp-about">{s.description}</p></>)}
 
           <div className="lp-tabs">
@@ -196,6 +197,35 @@ function TaxFeeBox({ pf, recipient, account, connect, ethUsd }) {
         : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
       {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}
       {err && <ErrorLine msg={err} onRetry={load} />}
+    </div>
+  );
+}
+
+// Token launched without contractURI: the creator publishes it (image, description, links) so the launchpad site shows them
+function MetaFix({ pf, s, onDone }) {
+  const [st, setSt] = useState({ busy: '', err: '' });
+  async function run() {
+    const eth = window.ethereum;
+    setSt({ busy: 'Uploading metadata…', err: '' });
+    try {
+      const soc = s.socials || {};
+      const uri = await pinContractMeta(contractMeta({ name: s.name, symbol: s.symbol, description: s.description, ...soc }, s.image));
+      const [from] = await eth.request({ method: 'eth_requestAccounts' });
+      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
+      setSt({ busy: 'Confirm in MetaMask…', err: '' });
+      const tx = setContractUriTx(pf, s.token, uri);
+      const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
+      setSt({ busy: 'Confirming…', err: '' });
+      const rc = await waitTx(hash);
+      if (rc.status !== 'success') throw new Error('Transaction failed');
+      setSt({ busy: '', err: '' }); onDone?.();
+    } catch (e) { setSt({ busy: '', err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message) }); }
+  }
+  return (
+    <div className="card">
+      <p className="small">The image, description and links are not published for {TAX[pf].label} yet, so its site shows the token without them. As the creator you can publish them now (one transaction).</p>
+      <button type="button" className="btn-primary sm" disabled={!!st.busy} onClick={run}>{st.busy || 'Publish token info'}</button>
+      {st.err && <ErrorLine msg={st.err} />}
     </div>
   );
 }

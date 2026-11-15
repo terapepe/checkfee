@@ -1,4 +1,4 @@
-// Proxy IPFS images through the dedicated Pinata gateway (key stays on the server); CIDs are immutable so cache long
+// Proxy IPFS images (and token metadata JSON) through the dedicated Pinata gateway (key stays on the server); CIDs are immutable so cache long
 const GATEWAY = process.env.PINATA_GATEWAY;
 const KEY = process.env.PINATA_GATEWAY_KEY;
 
@@ -11,6 +11,6 @@ export async function GET(_req, { params }) {
   const r = await fetch(url, { next: { revalidate: 31536000 } });
   if (!r.ok) return new Response('not found', { status: 404 });
   const type = r.headers.get('content-type') || 'application/octet-stream';
-  if (!/^image\//.test(type)) return new Response('not an image', { status: 415 });
+  if (!/^image\/|json/.test(type)) return new Response('not an image', { status: 415 }); // images + token metadata JSON
   return new Response(r.body, { headers: { 'content-type': type, 'cache-control': 'public, max-age=31536000, immutable' } });
 }
