@@ -10,8 +10,8 @@ import { client, ADDR, checkTokens } from '../../../lib/pons';
 import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet, ClaimAll, claimPlan, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck } from '../../icons';
-import { isClankerToken } from '../../../lib/clanker';
-import ClankerTokenPage from './clanker';
+import { taxPlatformOf } from '../../../lib/tax';
+import TaxTokenPage from './tax';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
 
@@ -31,16 +31,16 @@ async function launchBlockOf(token) {
   return null;
 }
 
-// Pons or Clanker token → the matching page
+// Pons, Clanker or o1 token → the matching page
 export default function TokenPage() {
   const { ca } = useParams();
   const [kind, setKind] = useState(null);
   useEffect(() => {
     if (!isAddress(ca || '', { strict: false })) { setKind('pons'); return; }
-    isClankerToken(getAddress(ca)).then(c => setKind(c ? 'clanker' : 'pons')).catch(() => setKind('pons'));
+    taxPlatformOf(getAddress(ca)).then(k => setKind(k || 'pons')).catch(() => setKind('pons'));
   }, [ca]);
   if (!kind) return <Spinner text="Loading token data…" />;
-  return kind === 'clanker' ? <ClankerTokenPage token={getAddress(ca)} /> : <PonsTokenPage />;
+  return kind === 'pons' ? <PonsTokenPage /> : <TaxTokenPage pf={kind} token={getAddress(ca)} />;
 }
 
 function PonsTokenPage() {

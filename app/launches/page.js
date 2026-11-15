@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { listCheckfeeTokens, tokenSummary, tradesOf, blockTime, getLogsChunked, ipfsUrl } from '../../lib/market';
-import { clankerSummary, clankerTrades } from '../../lib/clanker';
+import { TAX, taxSummary, taxTrades } from '../../lib/tax';
 import { getEthUsd, short, Spinner, ErrorLine } from '../ui';
 import { Sparkline, usdC, ago, Logo } from '../charts';
 import { IconBolt } from '../icons';
@@ -12,6 +12,7 @@ const TABS = [
   { id: 'near', label: 'Near graduation' },
   { id: 'grad', label: 'Graduated' },
   { id: 'clanker', label: 'Clanker' },
+  { id: 'o1', label: 'o1' },
 ];
 
 export default function Launches() {
@@ -27,8 +28,8 @@ export default function Launches() {
         setEthUsd(px);
         const out = await Promise.all(list.map(async l => {
           try {
-            if (l.platform === 'clanker') {
-              const [s, trades, time] = await Promise.all([clankerSummary(l.token), clankerTrades(l.poolId, null, l.block, getLogsChunked, false), blockTime(l.block)]);
+            if (TAX[l.platform]) {
+              const [s, trades, time] = await Promise.all([taxSummary(l.platform, l.token), taxTrades(l.poolId, false, l.block, getLogsChunked, false), blockTime(l.block)]);
               // native ETH is always currency0 in v4, so the token side is known without the summary
               return { ...s, logo: ipfsUrl(s.image), phase: 0, progress: null, time, spark: trades.slice(-40).map(t => t.price), trades: trades.length };
             }
@@ -47,7 +48,7 @@ export default function Launches() {
     if (tab === 'new') return [...ok].sort((a, b) => (b.time || 0) - (a.time || 0));
     if (tab === 'near') return ok.filter(r => r.phase === 0 && r.progress != null).sort((a, b) => b.progress - a.progress);
     if (tab === 'grad') return ok.filter(r => r.phase > 0);
-    if (tab === 'clanker') return ok.filter(r => r.platform === 'clanker').sort((a, b) => mc(b) - mc(a));
+    if (TAX[tab]) return ok.filter(r => r.platform === tab).sort((a, b) => mc(b) - mc(a));
     return [...ok].sort((a, b) => mc(b) - mc(a));
   }, [rows, tab]);
   const top = useMemo(() => [...(rows || [])].filter(r => !r.error).sort((a, b) => (b.mcapEth || 0) - (a.mcapEth || 0)).slice(0, 6), [rows]);
@@ -58,7 +59,7 @@ export default function Launches() {
         <h1 className="lp-title">Launches</h1>
         <a className="btn-primary" href="/launch"><IconBolt />Launch token</a>
       </div>
-      <p className="muted">Tokens created on Ponsfamily and Clanker through CheckFee.</p>
+      <p className="muted">Tokens created on Ponsfamily, Clanker and o1 through CheckFee.</p>
 
       {!rows && <Spinner text="Collecting tokens from on-chain…" />}
       {err && <ErrorLine msg={err} />}
@@ -70,7 +71,7 @@ export default function Launches() {
             {top.map(t => (
               <a key={t.token} href={`/launches/${t.token}`} className="trend-card">
                 <div className="trend-img"><Logo t={t} size={160} /></div>
-                <div className="trend-meta"><b>{t.name}</b> <em className="tag">{t.platform === 'clanker' ? 'Clanker' : 'Pons'}</em></div>
+                <div className="trend-meta"><b>{t.name}</b> <em className="tag">{TAX[t.platform]?.label || 'Pons'}</em></div>
                 <div className="trend-mc">{usdC(ethUsd && t.mcapEth ? t.mcapEth * ethUsd : null)}</div>
               </a>
             ))}
@@ -91,7 +92,7 @@ export default function Launches() {
                 <span className="lp-tok">
                   <Logo t={t} />
                   <span>
-                    <b>{t.name}</b> <span className="muted">{t.symbol}</span> <em className="tag">{t.platform === 'clanker' ? 'Clanker' : 'Pons'}</em>
+                    <b>{t.name}</b> <span className="muted">{t.symbol}</span> <em className="tag">{TAX[t.platform]?.label || 'Pons'}</em>
                     <small className="muted"><span className="mono">{short(t.deployer)}</span> · {ago(t.time)} · {t.trades} trades</small>
                   </span>
                 </span>

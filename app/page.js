@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { WalletResult, fetchWallet, fetchClankerWallet, useWallet, PageHeader, ErrorLine, Spinner } from './ui';
-import { usePlatforms, PlatformToggle, ClankerWalletResult } from './clanker-ui';
+import { WalletResult, fetchWallet, fetchTaxWallet, useWallet, PageHeader, ErrorLine, Spinner } from './ui';
+import { usePlatforms, PlatformToggle, TaxWalletResult } from './tax-ui';
+import { TAX_KEYS } from '../lib/tax';
 import { IconWallet, IconSearch } from './icons';
 
 export default function Home() {
@@ -16,8 +17,8 @@ export default function Home() {
     setLoading(true); setErr(''); setRes(null);
     try {
       const a = addr.trim();
-      const [pons, clanker] = await Promise.all([pf.pons ? fetchWallet(a) : null, pf.clanker ? fetchClankerWallet(a) : null]);
-      setRes({ pons, clanker });
+      const [pons, ...tax] = await Promise.all([pf.pons ? fetchWallet(a) : null, ...TAX_KEYS.map(k => (pf[k] ? fetchTaxWallet(k, a) : null))]);
+      setRes({ pons, tax: tax.filter(Boolean) });
     } catch (e) { setErr(e.message); }
     setLoading(false);
   }
@@ -37,7 +38,7 @@ export default function Home() {
 
   return (
     <>
-      <PageHeader icon={IconWallet} title="Check wallet" desc="Find every Pons v2 / Clanker token a wallet created (or receives fees for) and its unclaimed creator fees." />
+      <PageHeader icon={IconWallet} title="Check wallet" desc="Find every Pons v2 / Clanker / o1 token a wallet created (or receives fees for) and its unclaimed creator fees." />
       <PlatformToggle value={pf} onToggle={togglePf} disabled={loading} />
       <form className="search" onSubmit={check}>
         <IconSearch />
@@ -53,7 +54,7 @@ export default function Home() {
       {loading && <Spinner />}
       {err && <ErrorLine msg={err} onRetry={wallet.trim() ? () => run(wallet) : null} disabled={loading} />}
       {res?.pons && <WalletResult res={res.pons} />}
-      {res?.clanker && <ClankerWalletResult res={res.clanker} ethUsd={res.clanker.ethUsd} onReload={() => run(wallet)} />}
+      {res?.tax.map(t => <TaxWalletResult key={t.platform} res={t} ethUsd={t.ethUsd} onReload={() => run(wallet)} />)}
     </>
   );
 }

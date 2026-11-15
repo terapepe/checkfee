@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { formatUnits, zeroAddress, isAddress } from 'viem';
 import { checkWallet, checkTokens } from '../lib/pons';
-import { checkClankerWallet, checkClankerTokens } from '../lib/clanker-check';
+import { checkTaxWallet, checkTaxTokens } from '../lib/tax-check';
 import {
   Logo, IconWallet, IconWallets, IconCoin, IconExternal, IconCopy, IconCheck,
   IconAlert, IconRefresh, IconBolt, IconPower, TokenAvatar, IconInfo,
@@ -448,13 +448,14 @@ export function fetchTokens(cas) {
   return withRetry(() => checkTokens(cas));
 }
 
-export function fetchClankerWallet(wallet) {
+// tax launchpads (pf = 'clanker' | 'o1')
+export function fetchTaxWallet(pf, wallet) {
   if (!isAddress(wallet, { strict: false })) return Promise.reject(new Error('Invalid wallet address'));
-  return withRetry(() => checkClankerWallet(wallet));
+  return withRetry(() => checkTaxWallet(pf, wallet));
 }
 
-export function fetchClankerTokens(cas) {
-  return withRetry(() => checkClankerTokens(cas));
+export function fetchTaxTokens(pf, cas) {
+  return withRetry(() => checkTaxTokens(pf, cas));
 }
 
 export function parseAddresses(text) {

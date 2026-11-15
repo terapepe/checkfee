@@ -7,18 +7,18 @@ import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, Icon
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
-import { readClankerInfo, buildClankerTx, parseClankerLaunch } from '../../lib/clanker';
+import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch } from '../../lib/tax';
 import { distributorOf, createDistributorTx, routeToTx } from '../../lib/launch';
 
-const PLATFORMS = { pons: 'Pons', clanker: 'Clanker' };
+const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1' };
 const DRAFT = 'checkfee_launch_draft';
 // ticker: A-Z 0-9 only, uppercase · name: letters/digits/spaces only · contract limits per platform
-const LIMIT = { pons: { name: 64, symbol: 16 }, clanker: { name: 64, symbol: 16 } };
+const LIMIT = { pons: { name: 64, symbol: 16 }, clanker: { name: 64, symbol: 16 }, o1: { name: 64, symbol: 16 } };
 const CLEAN = {
   symbol: v => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16),
   name: v => v.replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 64),
 };
-const FEES = [0, 1, 2, 3, 4, 5]; // trading fee %, Clanker minimum is 1
+const FEES = [0, 1, 2, 3, 4, 5]; // trading fee %, Clanker / o1 minimum is 1
 const DESTS = [
   ['wallet', 'Your fee wallet', 'Fees accrue to your fee wallet to claim.'],
   ['buyback', 'Buyback vest', 'Part of your creator fees buys the token back: bought tokens lock and your share releases to your fee escrow gradually over 5 years.'],
@@ -33,7 +33,8 @@ export default function Launch() {
   const [img, setImg] = useState({ file: null, preview: '', uri: '', uploading: false });
   const [info, setInfo] = useState(null);
   const [pf, setPf] = useState('pons');
-  const isC = pf === 'clanker';
+  const isC = !!TAX[pf]; // Clanker / o1: same v4 tax launch
+  const PL = PLATFORMS[pf];
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
   const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : CLEAN[k] ? CLEAN[k](e.target.value) : e.target.value }));
 
@@ -58,7 +59,7 @@ export default function Launch() {
   const [credits, setCredits] = useState(null); // null = loading
   useEffect(() => {
     setInfo(null);
-    (isC ? readClankerInfo() : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
+    (isC ? readTaxInfo(pf) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
   }, [w.account, pf]);
   useEffect(() => {
     setCredits(null);
@@ -102,8 +103,8 @@ export default function Launch() {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
       // simulate the launch first so no fee is charged for a launch that would fail
-      if (isC) setSt({ step: 'Preparing Clanker launch…' });
-      const tx = isC ? await buildClankerTx({ account: from, form: f, image: img.uri, quoteIn }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
+      if (isC) setSt({ step: `Preparing ${PL} launch…` });
+      const tx = isC ? await buildTaxTx(pf, { account: from, form: f, image: img.uri, quoteIn }) : await buildLaunchTx({ account: from, form: f, logo: img.uri, quoteIn });
       // unused credit (fee paid, not yet launched) → don't charge again
       const left = await launchCredits(from);
       if (left > 0) {
@@ -123,7 +124,7 @@ export default function Launch() {
       if (rc.status !== 'success') throw new Error('Launch transaction failed');
       clearFeePaid(from);
       try { localStorage.removeItem(DRAFT); } catch {}
-      const L = isC ? parseClankerLaunch(rc.logs) : parseLaunch(rc.logs);
+      const L = isC ? parseTaxLaunch(pf, rc.logs) : parseLaunch(rc.logs);
       const note = L?.token && holders ? await shareWithHolders(eth, from, L.token) : '';
       if (note) { setSt({ step: '', hash, token: '', err: note, link: `/launches/${L.token}` }); return; }
       if (L?.token) { location.href = `/launches/${L.token}`; return; } // go straight to the token page
@@ -183,10 +184,10 @@ export default function Launch() {
   return (
     <>
       <PageHeader icon={IconBolt} title="Launch token" desc={isC
-        ? 'Create a token on Clanker (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.'
+        ? `Create a token on ${PL} (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.`
         : 'Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost.'} />
       <div className="seg" style={{ marginBottom: 16 }}>
-        {Object.entries(PLATFORMS).map(([k, v]) => <button key={k} type="button" className={pf === k ? 'on' : ''} onClick={() => { setPf(k); if (k === 'clanker') setF(v => (Number(v.fee) < 1 ? { ...v, fee: 1 } : v)); }} disabled={!!st.step}>{v}</button>)}
+        {Object.entries(PLATFORMS).map(([k, v]) => <button key={k} type="button" className={pf === k ? 'on' : ''} onClick={() => { setPf(k); if (TAX[k]) setF(v => (Number(v.fee) < 1 ? { ...v, fee: 1 } : v)); }} disabled={!!st.step}>{v}</button>)}
       </div>
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
@@ -220,7 +221,7 @@ export default function Launch() {
             <div className="seg">
               {FEES.map(n => <button key={n} type="button" className={Number(f.fee) === n ? 'on' : ''} disabled={isC && n < 1} onClick={() => setF(v => ({ ...v, fee: n }))}>{n}%</button>)}
             </div>
-            <p className="muted small">{isC ? "Charged on every buy and sell, Clanker's cut included (minimum 1%)." : 'Charged on every trade on top of the 1% Pons base fee.'}</p>
+            <p className="muted small">{isC ? `Charged on every buy and sell, ${PL}'s cut included (minimum 1%).` : 'Charged on every trade on top of the 1% Pons base fee.'}</p>
           </div>
           {!isC && (
             <fieldset className="dest">
@@ -238,12 +239,12 @@ export default function Launch() {
           <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
           <div className="sum">
-            <div><span className="lbl"><IconSpark />{isC ? 'Clanker token creation fee' : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconSpark />{isC ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span className="lbl"><IconCart />First buy</span><b>{fmt(quoteIn)} ETH</b></div>
             <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>
             <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
-          {info && !info.canLaunch && <ErrorLine msg={isC ? 'Clanker launches are currently closed.' : 'Pons currently only allows whitelisted wallets to launch.'} />}
+          {info && !info.canLaunch && <ErrorLine msg={isC ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
           <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || 'Launch with MetaMask'}</button>
           {st.hash && <a className="mono small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}

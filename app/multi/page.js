@@ -1,19 +1,22 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  WalletResult, fetchWallet, fetchClankerWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
+  WalletResult, fetchWallet, fetchTaxWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
   walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER,
 } from '../ui';
 import { IconWallets, IconRefresh } from '../icons';
-import { usePlatforms, PlatformToggle, ClankerWalletResult } from '../clanker-ui';
+import { usePlatforms, PlatformToggle, TaxWalletResult } from '../tax-ui';
+import { TAX_KEYS } from '../../lib/tax';
 
 // one wallet on the selected platforms
-const fetchBoth = (wallet, pf) => Promise.all([pf.pons ? fetchWallet(wallet) : null, pf.clanker ? fetchClankerWallet(wallet) : null])
-  .then(([pons, clanker]) => ({ pons, clanker, ethUsd: pons?.ethUsd || clanker?.ethUsd }));
+const fetchBoth = (wallet, pf) => Promise.all([pf.pons ? fetchWallet(wallet) : null, ...TAX_KEYS.map(k => (pf[k] ? fetchTaxWallet(k, wallet) : null))])
+  .then(([pons, ...tax]) => { tax = tax.filter(Boolean); return { pons, tax, ethUsd: pons?.ethUsd || tax[0]?.ethUsd }; });
 const totals = res => {
   const t = res.pons ? walletEthTotals(res.pons) : { pending: 0n, escrow: 0n };
-  return { ...t, clanker: res.clanker?.owed || 0n, n: (res.pons?.tokens.length || 0) + (res.clanker?.tokens.length || 0) };
+  const owed = k => res.tax.find(x => x.platform === k)?.owed || 0n;
+  return { ...t, clanker: owed('clanker'), o1: owed('o1'), n: (res.pons?.tokens.length || 0) + res.tax.reduce((a, x) => a + x.tokens.length, 0) };
 };
+const has = (res, k) => res.tax.some(x => x.platform === k);
 
 export default function Multi() {
   const [input, setInput] = useState('');
@@ -54,8 +57,8 @@ export default function Multi() {
 
   const done = results.filter(r => r.res);
   const ethUsd = done.find(r => r.res.ethUsd)?.res.ethUsd;
-  const sum = done.reduce((s, r) => { const t = totals(r.res); return { p: s.p + t.pending, e: s.e + t.escrow, c: s.c + t.clanker, n: s.n + t.n }; }, { p: 0n, e: 0n, c: 0n, n: 0 });
-  const totalEth = toEth(sum.p + sum.e + sum.c);
+  const sum = done.reduce((s, r) => { const t = totals(r.res); return { p: s.p + t.pending, e: s.e + t.escrow, c: s.c + t.clanker, o: s.o + t.o1, n: s.n + t.n }; }, { p: 0n, e: 0n, c: 0n, o: 0n, n: 0 });
+  const totalEth = toEth(sum.p + sum.e + sum.c + sum.o);
 
   return (
     <>
@@ -74,12 +77,13 @@ export default function Multi() {
             { label: 'Token', value: sum.n },
             { label: 'Pons (sweep + escrow)', value: `${fmt(sum.p + sum.e)} ETH` },
             { label: 'Clanker', value: `${fmt(sum.c)} ETH` },
+            { label: 'o1', value: `${fmt(sum.o)} ETH` },
             { label: 'Total claimable', value: ethUsd ? fmtUsd(totalEth * ethUsd) : '—', accent: true },
           ]} />
 
           <div className="card table-wrap">
             <table className="table">
-              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker</th><th>USD</th><th /></tr></thead>
+              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker</th><th>o1</th><th>USD</th><th /></tr></thead>
               <tbody>
                 {results.map(r => {
                   const t = r.res && totals(r.res);
@@ -91,14 +95,15 @@ export default function Multi() {
                           <td>{t.n}</td>
                           <td>{r.res.pons ? `${fmt(t.pending)} ETH` : '—'}</td>
                           <td>{r.res.pons ? `${fmt(t.escrow)} ETH` : '—'}</td>
-                          <td>{r.res.clanker ? `${fmt(t.clanker)} ETH` : '—'}</td>
-                          <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker) * ethUsd) : '—'}</td>
+                          <td>{has(r.res, 'clanker') ? `${fmt(t.clanker)} ETH` : '—'}</td>
+                          <td>{has(r.res, 'o1') ? `${fmt(t.o1)} ETH` : '—'}</td>
+                          <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker + t.o1) * ethUsd) : '—'}</td>
                           <td><a href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small">Blockscout</a></td>
                         </>
                       ) : r.loading ? (
-                        <td colSpan={6}><span className="loading inline"><span className="spin" />Checking…</span></td>
+                        <td colSpan={7}><span className="loading inline"><span className="spin" />Checking…</span></td>
                       ) : (
-                        <td colSpan={6}>
+                        <td colSpan={7}>
                           <span className="err">{r.err}</span>{' '}
                           <button type="button" className="btn-ghost sm" disabled={loading} onClick={() => recheck(r.wallet)}><IconRefresh />Retry</button>
                         </td>
@@ -114,7 +119,7 @@ export default function Multi() {
             <details key={r.wallet} id={`w-${r.wallet}`} className="fold" open={done.length === 1}>
               <summary><span className="mono">{r.wallet}</span><span className="muted"> · {totals(r.res).n} token</span></summary>
               {r.res.pons && <WalletResult res={r.res.pons} />}
-              {r.res.clanker && <ClankerWalletResult res={r.res.clanker} ethUsd={r.res.ethUsd} onReload={() => recheck(r.wallet)} />}
+              {r.res.tax.map(t => <TaxWalletResult key={t.platform} res={t} ethUsd={r.res.ethUsd} onReload={() => recheck(r.wallet)} />)}
             </details>
           ))}
         </>

@@ -1,9 +1,9 @@
 'use client';
-// Token page for a Clanker v5 token (Uniswap v4 pool, fees credited to the Clanker escrow)
+// Token page for a Clanker / o1 token (Uniswap v4 pool, fees credited to the platform escrow)
 import { useEffect, useState, useCallback } from 'react';
 import { formatEther, formatUnits } from 'viem';
 import { holdersOf, blockTime, getLogsChunked, ipfsUrl, waitTx } from '../../../lib/market';
-import { clankerSummary, clankerTrades, clankerLaunchBlock, clankerOwed, clankerClaimData, clankerUrl, CLANKER } from '../../../lib/clanker';
+import { TAX, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx } from '../../../lib/tax';
 import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, useWallet, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck } from '../../icons';
@@ -15,7 +15,8 @@ function CopyAddr({ a }) {
   return <button type="button" className="icon-btn" onClick={() => { navigator.clipboard.writeText(a); setOk(true); setTimeout(() => setOk(false), 1000); }}>{ok ? <IconCheck /> : <IconCopy />}</button>;
 }
 
-export default function ClankerTokenPage({ token }) {
+export default function TaxTokenPage({ pf, token }) {
+  const P = TAX[pf];
   const w = useWallet();
   const [s, setS] = useState(null);
   const [trades, setTrades] = useState([]);
@@ -27,11 +28,11 @@ export default function ClankerTokenPage({ token }) {
 
   const load = useCallback(async () => {
     try {
-      const [sum, lb, px, h] = await Promise.all([clankerSummary(token), clankerLaunchBlock(token), getEthUsd(), holdersOf(token)]);
-      const [trs, t0] = lb ? await Promise.all([clankerTrades(sum.poolId, sum.tokenIs0, lb, getLogsChunked), blockTime(lb)]) : [[], null];
+      const [sum, lb, px, h] = await Promise.all([taxSummary(pf, token), taxLaunchBlock(pf, token), getEthUsd(), holdersOf(token)]);
+      const [trs, t0] = lb ? await Promise.all([taxTrades(sum.poolId, sum.tokenIs0, lb, getLogsChunked), blockTime(lb)]) : [[], null];
       setS({ ...sum, logo: ipfsUrl(sum.image), time: t0 }); setTrades(trs); setEthUsd(px); setHolders(h);
     } catch (e) { setErr(e.shortMessage || e.message); }
-  }, [token]);
+  }, [pf, token]);
   useEffect(() => { load(); }, [load]);
 
   if (err) return <ErrorLine msg={err} onRetry={() => { setErr(''); load(); }} />;
@@ -55,12 +56,12 @@ export default function ClankerTokenPage({ token }) {
       <div className="tp-head">
         <Logo t={s} size={64} />
         <div className="tp-name">
-          <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">Clanker</em></h1>
+          <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">{P.label}</em></h1>
           <div className="muted small tp-sub">
             by <a className="mono" href={`${EXPLORER}/address/${s.deployer}`} target="_blank" rel="noreferrer">{short(s.deployer)}</a>
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
-            <a className="pill" href={clankerUrl(s.token)} target="_blank" rel="noreferrer">Clanker <IconExternal /></a>
+            <a className="pill" href={P.url(s.token)} target="_blank" rel="noreferrer">{P.label} <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>
         </div>
@@ -141,21 +142,22 @@ export default function ClankerTokenPage({ token }) {
         <div className="tp-side">
           <div className="card tradebox">
             <p className="muted">Trades on a Uniswap v4 pool ({s.buyTax}% buy / {s.sellTax}% sell fee).</p>
-            <a className="btn-primary big-btn" href={clankerUrl(s.token)} target="_blank" rel="noreferrer">Trade on Clanker <IconExternal /></a>
+            <a className="btn-primary big-btn" href={P.url(s.token)} target="_blank" rel="noreferrer">Trade on {P.label} <IconExternal /></a>
           </div>
-          <ClankerFeeBox recipient={s.creatorFeeRecipient} account={w.account} connect={w.connect} ethUsd={ethUsd} />
+          <TaxFeeBox pf={pf} recipient={s.creatorFeeRecipient} account={w.account} connect={w.connect} ethUsd={ethUsd} />
         </div>
       </div>
     </div>
   );
 }
 
-// Creator fees sit in the Clanker escrow (per recipient, all their Clanker tokens); claimFor pays the recipient
-function ClankerFeeBox({ recipient, account, connect, ethUsd }) {
+// Creator fees sit in the platform escrow (per recipient, all their Clanker tokens); claimFor pays the recipient
+function TaxFeeBox({ pf, recipient, account, connect, ethUsd }) {
+  const L = TAX[pf].label;
   const [owed, setOwed] = useState(null);
   const [err, setErr] = useState('');
   const [st, setSt] = useState({ busy: '', hash: '' });
-  const load = useCallback(() => { setErr(''); clankerOwed(recipient).then(setOwed).catch(e => setErr(e.shortMessage || e.message)); }, [recipient]);
+  const load = useCallback(() => { setErr(''); taxOwed(pf, recipient).then(setOwed).catch(e => setErr(e.shortMessage || e.message)); }, [pf, recipient]);
   useEffect(() => { load(); }, [load]);
 
   async function claim() {
@@ -164,7 +166,8 @@ function ClankerFeeBox({ recipient, account, connect, ethUsd }) {
     try {
       const [from] = await eth.request({ method: 'eth_requestAccounts' });
       await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] });
-      const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: CLANKER.escrow, data: clankerClaimData(recipient), value: '0x0' }] });
+      const tx = taxClaimTx(pf, recipient);
+      const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
       setSt({ busy: 'Waiting for confirmation…', hash });
       const rc = await waitTx(hash);
       if (rc.status !== 'success') throw new Error('Claim failed');
@@ -181,7 +184,7 @@ function ClankerFeeBox({ recipient, account, connect, ethUsd }) {
       <span className="muted small">Total claimable</span>
       <b className="fb-amt">{fmt(owed || 0n)} ETH</b>
       <span className="muted small">{ethUsd && owed != null ? fmtUsd(toEth(owed) * ethUsd) : '—'}</span>
-      <small className="muted">Clanker credits fees to the recipient on every trade; this total covers all of the recipient's Clanker tokens.</small>
+      <small className="muted">{L} credits fees to the recipient on every trade; this total covers all of the recipient's {L} tokens.</small>
       <div className="fb-row">
         <span className="muted small">Fee recipient</span>
         <a className="mono small" href={`${EXPLORER}/address/${recipient}`} target="_blank" rel="noreferrer">{short(recipient)}</a>

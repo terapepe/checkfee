@@ -1,13 +1,13 @@
 'use client';
 import { useState } from 'react';
 import {
-  TokenCard, RecipientBlock, fetchTokens, fetchClankerTokens, PageHeader, ErrorLine, Spinner, Stats, parseAddresses,
+  TokenCard, RecipientBlock, fetchTokens, fetchTaxTokens, PageHeader, ErrorLine, Spinner, Stats, parseAddresses,
   fmt, fmtUsd, toEth,
 } from '../ui';
 import { IconCoin } from '../icons';
 import { zeroAddress, getAddress } from 'viem';
-import { usePlatforms, PlatformToggle, ClankerCAResult } from '../clanker-ui';
-import { isClankerToken } from '../../lib/clanker';
+import { usePlatforms, PlatformToggle, TaxCAResult } from '../tax-ui';
+import { TAX, TAX_KEYS, taxPlatformOf } from '../../lib/tax';
 
 export default function ByCA() {
   const [input, setInput] = useState('');
@@ -23,11 +23,15 @@ export default function ByCA() {
     setErr(''); setLoading(true); setRes(null); setClk(null);
     try {
       // sort CAs by platform (Clanker factory knows its tokens), skip a platform that is switched off
-      const isC = pf.clanker ? await Promise.all(list.map(a => isClankerToken(getAddress(a)).catch(() => false))) : list.map(() => false);
-      const cl = list.filter((_, i) => isC[i]), po = list.filter((_, i) => !isC[i]);
-      const [p, c] = await Promise.all([pf.pons && po.length ? fetchTokens(po) : null, cl.length ? fetchClankerTokens(cl) : null]);
-      if (!p && !c) throw new Error(pf.pons ? 'No token found' : 'No Clanker token in this list');
-      setRes(p); setClk(c);
+      const kind = await Promise.all(list.map(a => taxPlatformOf(getAddress(a)).catch(() => null)));
+      const po = list.filter((_, i) => !kind[i]);
+      const [p, ...tax] = await Promise.all([
+        pf.pons && po.length ? fetchTokens(po) : null,
+        ...TAX_KEYS.map(k => { const cas = list.filter((_, i) => kind[i] === k); return pf[k] && cas.length ? fetchTaxTokens(k, cas) : null; }),
+      ]);
+      const t = tax.filter(Boolean);
+      if (!p && !t.length) throw new Error('No token found on the selected platforms');
+      setRes(p); setClk(t);
     } catch (e) { setErr(e.message); }
     setLoading(false);
   }
@@ -38,7 +42,7 @@ export default function ByCA() {
 
   return (
     <>
-      <PageHeader icon={IconCoin} title="Check by CA" desc="Enter one or more Pons v2 / Clanker token contract addresses to see unclaimed fees and each token's fee recipient." />
+      <PageHeader icon={IconCoin} title="Check by CA" desc="Enter one or more Pons v2 / Clanker / o1 token contract addresses to see unclaimed fees and each token's fee recipient." />
       <PlatformToggle value={pf} onToggle={togglePf} disabled={loading} />
       <form className="search area" onSubmit={check}>
         <textarea rows={3} placeholder={'Token CA, one per line\n0x…'} value={input} onChange={e => setInput(e.target.value)} />
@@ -67,12 +71,12 @@ export default function ByCA() {
           ))}
         </>
       )}
-      {clk && (
-        <>
-          <h3>Clanker</h3>
-          <ClankerCAResult res={clk} ethUsd={clk.ethUsd} onReload={run} />
-        </>
-      )}
+      {clk?.map(c => (
+        <div key={c.platform}>
+          <h3>{TAX[c.platform].label}</h3>
+          <TaxCAResult res={c} ethUsd={c.ethUsd} onReload={run} />
+        </div>
+      ))}
     </>
   );
 }
