@@ -288,16 +288,23 @@ function FeeBox({ token, account, connect, ethUsd }) {
   if (err) return <div className="card feebox"><ErrorLine msg={err} onRetry={load} /></div>;
   if (!d) return <div className="card feebox"><Spinner text="Reading creator fees…" /></div>;
   const { t, owner, escrow } = d;
-  const eth = toEth(t.estimatedCreator);
   const escEth = escrow.find(a => a.asset === '0x0000000000000000000000000000000000000000');
+  const escWei = escEth ? BigInt(escEth.balance) : 0n;
+  const isEthPair = t.quote === '0x0000000000000000000000000000000000000000';
+  // same total as Check wallet: unswept fees of this token + ETH already in the recipient's escrow
+  const totalWei = (isEthPair ? BigInt(t.estimatedCreator) : 0n) + escWei;
   const { calls } = claimPlan([t], escrow);
   const isOwner = account && account.toLowerCase() === owner.toLowerCase();
   return (
     <div className="card feebox">
-      <span className="muted small">Unclaimed creator fees</span>
-      <b className="fb-amt">{fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}</b>
-      <span className="muted small">{ethUsd ? fmtUsd(eth * ethUsd) : '—'}{t.splitter ? ' · creator share 90%' : ''}</span>
-      {escEth && BigInt(escEth.balance) > 0n && <small className="muted">+ {fmt(escEth.balance)} ETH already in the recipient's escrow</small>}
+      <span className="muted small">Total claimable</span>
+      <b className="fb-amt">{fmt(totalWei)} ETH</b>
+      <span className="muted small">{ethUsd ? fmtUsd(toEth(totalWei) * ethUsd) : '—'}</span>
+      <div className="fb-break">
+        <span>To sweep from this token{t.splitter ? ' (90%)' : ''}</span><b>{fmt(t.estimatedCreator, t.quoteDecimals)} {t.quoteSymbol}</b>
+        <span>Already in escrow</span><b>{fmt(escWei)} ETH</b>
+      </div>
+      {escWei > 0n && <small className="muted">Escrow is per wallet, so it can include fees from the recipient's other tokens.</small>}
       <div className="fb-row">
         <span className="muted small">Fee recipient</span>
         <a className="mono small" href={`${EXPLORER}/address/${owner}`} target="_blank" rel="noreferrer">{short(owner)}</a>
