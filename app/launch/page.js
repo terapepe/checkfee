@@ -28,7 +28,7 @@ const DESTS = [
   ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
 ];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false };
 
 export default function Launch() {
   const w = useWallet();
@@ -68,7 +68,7 @@ export default function Launch() {
         if (d.f) setF(v => ({ ...v, ...d.f, payout: '' }));
         if (d.pf) setPf(d.pf);
         if (CHAINS[d.net]) setNet(d.net);
-        if (d.uri) setImg({ file: null, preview: `/api/ipfs/${d.uri.replace('ipfs://', '')}`, uri: d.uri, uploading: false });
+        if (d.uri) setImg({ file: null, preview: d.uri.startsWith('ipfs://') ? `/api/ipfs/${d.uri.replace('ipfs://', '')}` : d.uri, uri: d.uri, uploading: false });
       }
     } catch {}
     setLoaded(true);
@@ -90,6 +90,21 @@ export default function Launch() {
   }, [w.account, chainId]);
   const free = credits != null && credits > 0;
   const serviceFee = free ? 0n : CHECKFEE_LAUNCH_FEE;
+
+  // X profile picture as the token image: direct pbs.twimg.com link (no upload), looked up via unavatar from the browser
+  const [xImg, setXImg] = useState('');
+  async function loadXAvatar() {
+    const h = f.twitter.trim().match(/^(?:https?:\/\/)?(?:www\.|mobile\.)?(?:x|twitter)\.com\/@?([A-Za-z0-9_]{1,15})|^@?([A-Za-z0-9_]{1,15})$/);
+    const handle = h?.[1] || h?.[2];
+    if (!handle) return setXImg('Enter an X link or @handle first');
+    setXImg('Loading…');
+    try {
+      const j = await fetch(`https://unavatar.io/x/${handle}?json`).then(r => r.json());
+      if (!/^https:\/\/pbs\.twimg\.com\/profile_images\//.test(j.url || '')) throw new Error(`No profile picture found for @${handle}`);
+      setImg({ file: null, preview: j.url, uri: j.url, uploading: false });
+      setXImg('');
+    } catch (er) { setXImg(er.message || 'Lookup failed'); }
+  }
 
   async function pickImage(e) {
     const file = e.target.files?.[0];
@@ -248,7 +263,7 @@ export default function Launch() {
               {img.preview ? <img src={img.preview} alt="" /> : <span><IconImage /><br />+ Image<br /><small>PNG/JPG/WEBP/GIF ≤2MB</small></span>}
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={pickImage} hidden />
               {img.uploading && <em className="badge">uploading…</em>}
-              {img.uri && <em className="badge">IPFS ✓</em>}
+              {img.uri && <em className="badge">{img.uri.startsWith('ipfs://') ? 'IPFS ✓' : 'X ✓'}</em>}
             </label>
             <div className="lf-col">
               <label><L icon={IconTag}>Token name</L><input value={f.name} onChange={set('name')} maxLength={lim.name} placeholder="NEXT AI" required /></label>
@@ -257,7 +272,9 @@ export default function Launch() {
           </div>
           <label><L icon={IconText}>Description</L><textarea rows={3} value={f.description} onChange={set('description')} maxLength={500} /></label>
           <div className="lf-grid">
-            <label><L icon={IconAt}>X / Twitter</L><input value={f.twitter} onChange={set('twitter')} placeholder="https://x.com/…" /></label>
+            <label><L icon={IconAt}>X / Twitter</L><span style={{ display: 'flex', gap: 6 }}><input style={{ flex: 1, minWidth: 0 }} value={f.twitter} onChange={set('twitter')} placeholder="https://x.com/…" />
+              <button type="button" onClick={loadXAvatar} disabled={!f.twitter.trim() || img.uploading || !!st.step} title="Use this X account's profile picture as the token image (direct link, no IPFS upload)">Use as image</button></span>
+              {xImg && <small className="muted">{xImg}</small>}</label>
             <label><L icon={IconSend}>Telegram</L><input value={f.telegram} onChange={set('telegram')} placeholder="https://t.me/…" /></label>
             <label><L icon={IconGlobe}>Website</L><span style={{ display: 'flex', gap: 6 }}><input style={{ flex: 1, minWidth: 0 }} value={f.website} onChange={set('website')} placeholder="https://…" />
               <button type="button" onClick={autofill} disabled={!f.website.trim() || scan.busy || !!st.step}>{scan.busy ? 'Scanning…' : 'Auto-fill'}</button></span>
@@ -301,6 +318,10 @@ export default function Launch() {
           {!isC && Number(f.buy) > 0 && (
             <label className="check"><input type="checkbox" checked={!!f.autoApprove} onChange={set('autoApprove')} />
               <span><b>Auto-approve after launch</b><br /><small className="muted">One extra MetaMask confirmation right after the launch: approves the curve to sell your bought tokens, so your first sell needs only one signature.</small></span></label>
+          )}
+          {!isC && (
+            <label className="check"><input type="checkbox" checked={!!f.zeroEcon} onChange={set('zeroEcon')} />
+              <span><b>Skip economics check</b><br /><small className="muted">Sends expectedEconomics = 0. The launch no longer reverts if Pons changes its curve/fee terms while your transaction is pending; it uses whatever terms are live when it lands.</small></span></label>
           )}
 
           <div className="sum">

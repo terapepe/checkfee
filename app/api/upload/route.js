@@ -52,7 +52,7 @@ async function pinJson(req) {
   const links = Object.fromEntries(['website', 'twitter', 'telegram', 'discord', 'farcaster'].map(k => [k, str(j.links?.[k], 200)]).filter(([, v]) => v));
   const meta = {
     name: str(j.name, 64), symbol: str(j.symbol, 16), description: str(j.description, 500), standard: 'ERC20',
-    image: /^ipfs:\/\/[a-zA-Z0-9]{32,100}$/.test(j.image || '') ? j.image : '', links,
+    image: /^ipfs:\/\/[a-zA-Z0-9]{32,100}$/.test(j.image || '') || /^https:\/\/pbs\.twimg\.com\/profile_images\/[\w/.-]{1,150}$/.test(j.image || '') ? j.image : '', links,
   };
   const r = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
     method: 'POST', headers: { Authorization: `Bearer ${JWT}`, 'content-type': 'application/json' },
