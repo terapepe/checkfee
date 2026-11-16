@@ -32,9 +32,11 @@ export default function TaxTokenPage({ pf, chainId, token }) {
 
   const load = useCallback(async () => {
     try {
-      const [sum, lb, px, h] = await Promise.all([taxSummary(pf, chainId, token), taxLaunchBlock(pf, chainId, token), getEthUsd(), holdersOn(chainId, token)]);
+      const hb = new URLSearchParams(location.search).get('b'); // launch block hint
+      holdersOn(chainId, token).then(setHolders).catch(() => {}); // explorer can lag: don't block the page
+      const [sum, lb, px] = await Promise.all([taxSummary(pf, chainId, token), /^\d+$/.test(hb || '') ? BigInt(hb) : taxLaunchBlock(pf, chainId, token), getEthUsd()]);
       const [trs, t0] = lb ? await Promise.all([taxTrades(pf, chainId, sum.poolId, sum.tokenIs0, lb), blockTimeOn(chainId, lb)]) : [[], null];
-      setS({ ...sum, logo: ipfsUrl(sum.image), time: t0 }); setTrades(trs); setEthUsd(px); setHolders(h);
+      setS({ ...sum, logo: ipfsUrl(sum.image), time: t0 }); setTrades(trs); setEthUsd(px);
     } catch (e) { setErr(e.shortMessage || e.message); }
   }, [pf, chainId, token]);
   useEffect(() => { load(); }, [load]);

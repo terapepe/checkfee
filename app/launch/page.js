@@ -169,8 +169,10 @@ export default function Launch() {
         }
       }
       const note = (L?.token && holders ? await shareWithHolders(eth, from, L.token) : '') || apNote;
-      if (note) { setSt({ step: '', hash, token: '', err: note, link: `/launches/${L.token}` }); return; }
-      if (L?.token) { location.href = `/launches/${L.token}${chainId === 4663 ? '' : `?chain=${chainId}`}`; return; } // go straight to the token page
+      // hints for the token page: platform, chain, launch block → no detection / log scan needed
+      const page = L?.token ? `/launches/${L.token}?pf=${pf}&chain=${chainId}&b=${rc.blockNumber}` : '';
+      if (note) { setSt({ step: '', hash, token: '', err: note, link: page }); return; }
+      if (L?.token) { location.href = page; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
     } catch (er) {
       setSt(s => ({ ...s, step: '', err: er.code === 4001 ? 'Cancelled in MetaMask' : (er.shortMessage || er.message || String(er)) }));

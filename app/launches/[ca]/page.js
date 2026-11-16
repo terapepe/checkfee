@@ -39,7 +39,12 @@ export default function TokenPage() {
   useEffect(() => {
     if (!isAddress(ca || '', { strict: false })) { setKind('pons'); return; }
     // ?chain=8453 → Base; no param → Robinhood first, then Base
-    const q = Number(new URLSearchParams(location.search).get('chain'));
+    const sp = new URLSearchParams(location.search);
+    const q = Number(sp.get('chain'));
+    // hint from the launch page: ?pf=pons|clanker|o1&chain=…
+    const hpf = sp.get('pf');
+    if (hpf === 'pons') { setKind('pons'); return; }
+    if ((hpf === 'clanker' || hpf === 'o1') && q) { setKind({ pf: hpf, chainId: q }); return; }
     taxPlatformOf(getAddress(ca), q ? [q] : undefined).then(k => setKind(k || 'pons')).catch(() => setKind('pons'));
   }, [ca]);
   if (!kind) return <Spinner text="Loading token data…" />;
@@ -61,12 +66,14 @@ function PonsTokenPage() {
     try {
       if (!isAddress(ca || '', { strict: false })) throw new Error('Invalid CA');
       const token = getAddress(ca);
-      const lb = await launchBlockOf(token);
-      const [sum, px, h, t0] = await Promise.all([
-        tokenSummary(token, lb), getEthUsd(), holdersOf(token), lb ? blockTime(lb) : null,
+      const hb = new URLSearchParams(location.search).get('b'); // launch block hint
+      const lb = /^\d+$/.test(hb || '') ? BigInt(hb) : await launchBlockOf(token);
+      holdersOf(token).then(setHolders).catch(() => {}); // explorer can lag: don't block the page
+      const [sum, px, t0] = await Promise.all([
+        tokenSummary(token, lb), getEthUsd(), lb ? blockTime(lb) : null,
       ]);
       const trs = lb ? await tradesOf(sum.curve, lb) : [];
-      setS({ ...sum, time: t0 }); setTrades(trs); setEthUsd(px); setHolders(h);
+      setS({ ...sum, time: t0 }); setTrades(trs); setEthUsd(px);
     } catch (e) { setErr(e.message); }
   }, [ca]);
   useEffect(() => { load(); }, [load]);
