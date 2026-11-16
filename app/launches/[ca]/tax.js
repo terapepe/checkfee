@@ -7,7 +7,7 @@ import { CHAINS, holdersOn, blockTimeOn, switchChain, waitOn } from '../../../li
 import { TAX, taxUrl, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx, contractMeta, pinContractMeta, setContractUriTx } from '../../../lib/tax';
 import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
-import { IconExternal, IconCopy, IconCheck, ChainBadge } from '../../icons';
+import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../../icons';
 import { CopyTokenButton } from '../../copy-token';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
@@ -38,6 +38,9 @@ export default function TaxTokenPage({ pf, chainId, token }) {
     } catch (e) { setErr(e.shortMessage || e.message); }
   }, [pf, chainId, token]);
   useEffect(() => { load(); }, [load]);
+  const [busy, setBusy] = useState(false);
+  const [rk, setRk] = useState(0); // remounts the fee box so it re-reads too
+  const refresh = async () => { setBusy(true); await load(); setRk(k => k + 1); setBusy(false); };
 
   if (err) return <ErrorLine msg={err} onRetry={() => { setErr(''); load(); }} />;
   if (!s) return <Spinner text="Loading token data…" />;
@@ -66,6 +69,7 @@ export default function TaxTokenPage({ pf, chainId, token }) {
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
             <CopyTokenButton pf={pf} chainId={chainId} t={{ ...s, fee: s.buyTax }} />
+            <button type="button" className="pill pill-btn" onClick={refresh} disabled={busy} title="Reload latest data"><IconRefresh />{busy ? 'Refreshing…' : 'Refresh'}</button>
             <a className="pill" href={url(s.token)} target="_blank" rel="noreferrer">{P.label} <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>
@@ -152,7 +156,7 @@ export default function TaxTokenPage({ pf, chainId, token }) {
             <p className="muted">Trades on a Uniswap v4 pool ({s.buyTax}% buy / {s.sellTax}% sell fee).</p>
             <a className="btn-primary big-btn" href={url(s.token)} target="_blank" rel="noreferrer">Trade on {P.label} <IconExternal /></a>
           </div>
-          <TaxFeeBox pf={pf} chainId={chainId} recipient={s.creatorFeeRecipient} account={w.account} connect={w.connect} ethUsd={ethUsd} />
+          <TaxFeeBox key={rk} pf={pf} chainId={chainId} recipient={s.creatorFeeRecipient} account={w.account} connect={w.connect} ethUsd={ethUsd} />
         </div>
       </div>
     </div>

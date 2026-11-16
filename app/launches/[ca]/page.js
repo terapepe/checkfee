@@ -9,7 +9,7 @@ import {
 import { client, ADDR, checkTokens } from '../../../lib/pons';
 import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet, ClaimAll, claimPlan, fmt, fmtUsd, toEth } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
-import { IconExternal, IconCopy, IconCheck, ChainBadge } from '../../icons';
+import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../../icons';
 import { taxPlatformOf } from '../../../lib/tax';
 import TaxTokenPage from './tax';
 import { CopyTokenButton } from '../../copy-token';
@@ -70,6 +70,9 @@ function PonsTokenPage() {
     } catch (e) { setErr(e.message); }
   }, [ca]);
   useEffect(() => { load(); }, [load]);
+  const [busy, setBusy] = useState(false);
+  const [rk, setRk] = useState(0); // remounts the fee box so it re-reads too
+  const refresh = async () => { setBusy(true); await load(); setRk(k => k + 1); setBusy(false); };
 
   if (err) return <ErrorLine msg={err} />;
   if (!s) return <Spinner text="Loading token data…" />;
@@ -97,6 +100,7 @@ function PonsTokenPage() {
             <span>· {ago(s.time)} ago</span><span>· ETH pair</span>
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
             <CopyTokenButton pf="pons" t={{ ...s, image: s.logoUri, fee: s.creatorTaxBps / 100 }} />
+            <button type="button" className="pill pill-btn" onClick={refresh} disabled={busy} title="Reload latest data"><IconRefresh />{busy ? 'Refreshing…' : 'Refresh'}</button>
             <a className="pill" href={`${PONS}/${s.token}`} target="_blank" rel="noreferrer">Pons <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>
@@ -186,7 +190,7 @@ function PonsTokenPage() {
 
         <div className="tp-side">
           <TradeBox s={s} account={w.account} connect={w.connect} onDone={load} />
-          <FeeBox token={s.token} account={w.account} connect={w.connect} ethUsd={ethUsd} />
+          <FeeBox key={rk} token={s.token} account={w.account} connect={w.connect} ethUsd={ethUsd} />
         </div>
       </div>
     </div>
