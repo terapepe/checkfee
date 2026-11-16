@@ -7,7 +7,7 @@ import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, Icon
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
 import { readLaunchInfo, buildLaunchTx, parseLaunch, waitReceipt, CHECKFEE_LAUNCH_FEE, CHECKFEE_WALLET, CHECKFEE_FEE_ON } from '../../lib/launch';
 import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
-import { recordLaunch } from '../../lib/market';
+import { recordLaunch, approveData } from '../../lib/market';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge } from '../icons';
@@ -28,7 +28,7 @@ const DESTS = [
   ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
 ];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '' };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false };
 
 export default function Launch() {
   const w = useWallet();
@@ -157,7 +157,18 @@ export default function Launch() {
       const L = isC ? parseTaxLaunch(pf, chainId, rc.logs) : parseLaunch(rc.logs);
       // add it to the site's launch list (server side)
       if (L?.token) await recordLaunch({ chainId, platform: pf, token: L.token, poolId: L.poolId, curve: L.curve, deployer: from, block: rc.blockNumber, txHash: hash });
-      const note = L?.token && holders ? await shareWithHolders(eth, from, L.token) : '';
+      // Pons: optional unlimited approve of the bought tokens to the curve, so later sells need one signature
+      let apNote = '';
+      if (!isC && f.autoApprove && Number(f.buy) > 0 && L?.token && L.curve) {
+        try {
+          setSt({ step: 'Auto-approve: allow the curve to sell your tokens…', hash });
+          const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: L.token, data: approveData(L.curve, 2n ** 256n - 1n), value: '0x0' }] });
+          if ((await waitOn(chainId, h)).status !== 'success') throw new Error('approve reverted');
+        } catch (er) {
+          apNote = `Token launched, but auto-approve was skipped (${er.code === 4001 ? 'cancelled' : er.shortMessage || er.message}). You can approve on your first sell.`;
+        }
+      }
+      const note = (L?.token && holders ? await shareWithHolders(eth, from, L.token) : '') || apNote;
       if (note) { setSt({ step: '', hash, token: '', err: note, link: `/launches/${L.token}` }); return; }
       if (L?.token) { location.href = `/launches/${L.token}${chainId === 4663 ? '' : `?chain=${chainId}`}`; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
@@ -285,6 +296,10 @@ export default function Launch() {
             </label>
           )}
           <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
+          {!isC && Number(f.buy) > 0 && (
+            <label className="check"><input type="checkbox" checked={!!f.autoApprove} onChange={set('autoApprove')} />
+              <span><b>Auto-approve after launch</b><br /><small className="muted">One extra MetaMask confirmation right after the launch: approves the curve to sell your bought tokens, so your first sell needs only one signature.</small></span></label>
+          )}
 
           <div className="sum">
             <div><span className="lbl"><IconSpark />{isC ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
