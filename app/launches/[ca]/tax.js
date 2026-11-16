@@ -5,7 +5,7 @@ import { formatEther, formatUnits } from 'viem';
 import { ipfsUrl } from '../../../lib/market';
 import { CHAINS, holdersOn, blockTimeOn, switchChain, waitOn } from '../../../lib/chains';
 import { TAX, taxUrl, taxSummary, taxTrades, taxLaunchBlock, taxOwed, taxClaimTx, contractMeta, pinContractMeta, setContractUriTx } from '../../../lib/tax';
-import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth } from '../../ui';
+import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../../icons';
 import { CopyTokenButton } from '../../copy-token';
@@ -209,7 +209,7 @@ function TaxFeeBox({ pf, chainId, recipient, account, connect, ethUsd }) {
       </div>
       {!owed ? <small className="muted">Nothing to claim right now.</small>
         : isOwner ? <button type="button" className="btn-primary big-btn" disabled={!!st.busy} onClick={claim}>{st.busy || 'Claim fees'}</button>
-        : account ? <small className="muted">Connect the fee recipient wallet to claim.</small>
+        : account ? <SwitchToWallet target={recipient} />
         : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
       {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}
       {err && <ErrorLine msg={err} onRetry={load} />}

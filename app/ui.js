@@ -43,7 +43,39 @@ export function WalletProvider({ children }) {
     await window.ethereum?.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }).catch(() => {});
     setAccount('');
   }
-  return <WalletCtx.Provider value={{ account, connect, disconnect }}>{children}</WalletCtx.Provider>;
+  // open MetaMask's account picker (a dapp cannot select an account itself), then read the chosen one
+  async function pick() {
+    const eth = window.ethereum;
+    if (!eth) throw new Error('MetaMask not found in this browser');
+    await eth.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+    const a = (await eth.request({ method: 'eth_accounts' }).catch(() => []))?.[0] || '';
+    setAccount(a);
+    return a;
+  }
+  return <WalletCtx.Provider value={{ account, connect, disconnect, pick }}>{children}</WalletCtx.Provider>;
+}
+
+// "Switch to fee wallet": opens the MetaMask account picker and checks the picked account is `target`
+export function SwitchToWallet({ target }) {
+  const w = useWallet();
+  const [msg, setMsg] = useState('');
+  const [copied, setCopied] = useState(false);
+  async function go() {
+    setMsg('');
+    try {
+      const a = await w.pick();
+      if (a.toLowerCase() !== target.toLowerCase()) setMsg(`Wrong wallet: select ${short(target)} in MetaMask`);
+    } catch (e) { setMsg(e.code === 4001 ? 'Cancelled in MetaMask' : e.message); }
+  }
+  return (
+    <div className="small">
+      <span className="muted">Connect the fee recipient wallet to claim: </span>
+      <span className="mono">{target}</span>{' '}
+      <button type="button" className="icon-btn" onClick={() => { navigator.clipboard.writeText(target); setCopied(true); setTimeout(() => setCopied(false), 1000); }}>{copied ? <IconCheck /> : <IconCopy />}</button>
+      <div><button type="button" className="btn-ghost" onClick={go}>Switch to fee wallet</button></div>
+      {msg && <small className="warn">{msg}</small>}
+    </div>
+  );
 }
 
 /* ---------------- Page shell: left sidebar ---------------- */

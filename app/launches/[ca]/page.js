@@ -7,7 +7,7 @@ import {
   ethBalance, buyData, sellData, approveData, waitTx,
 } from '../../../lib/market';
 import { client, ADDR, checkTokens } from '../../../lib/pons';
-import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet, ClaimAll, claimPlan, fmt, fmtUsd, toEth } from '../../ui';
+import { getEthUsd, short, Spinner, ErrorLine, EXPLORER, PONS, useWallet, ClaimAll, claimPlan, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../../icons';
 import { taxPlatformOf } from '../../../lib/tax';
@@ -367,7 +367,7 @@ function FeeBox({ token, account, connect, ethUsd }) {
       </div>
       {calls.length === 0 ? <small className="muted">Nothing to claim right now.</small>
         : isOwner ? <ClaimAll wallet={owner} calls={calls} />
-        : account ? <small className="muted">Connect the fee recipient wallet to claim.</small>
+        : account ? <SwitchToWallet target={owner} />
         : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
     </div>
   );
