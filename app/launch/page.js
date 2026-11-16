@@ -41,7 +41,23 @@ export default function Launch() {
   const [net, setNet] = useState(4663);
   const chainId = isC ? net : 4663; // Pons is Robinhood only
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
-  const set = k => e => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : CLEAN[k] ? CLEAN[k](e.target.value) : e.target.value }));
+  const [scan, setScan] = useState({ busy: false, msg: '' });
+  // auto-fill from the project website: only fills empty fields
+  const autofill = async () => {
+    if (!f.website.trim()) return;
+    setScan({ busy: true, msg: '' });
+    try {
+      const d = await fetch(`/api/scan-site?url=${encodeURIComponent(f.website.trim())}`).then(r => r.json());
+      if (d.error) throw new Error(d.error);
+      const got = { name: d.name ? CLEAN.name(d.name).trim() : '', symbol: d.symbol ? CLEAN.symbol(d.symbol) : '', description: (d.description || '').slice(0, 500), twitter: d.x || '', telegram: d.telegram || '' };
+      const filled = Object.keys(got).filter(k => got[k] && !f[k]);
+      setF(v => { const n = { ...v }; for (const k of filled) if (!n[k]) n[k] = got[k]; return n; });
+      setScan({ busy: false, msg: filled.length ? `Filled: ${filled.join(', ')}. Please review.` : 'Nothing new found.' });
+    } catch (e) {
+      setScan({ busy: false, msg: e.message || 'Scan failed' });
+    }
+  };
+  const set = k => e =>setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : CLEAN[k] ? CLEAN[k](e.target.value) : e.target.value }));
 
   // draft: restore once, then save on every change until the token is launched
   const [loaded, setLoaded] = useState(false);
@@ -230,7 +246,9 @@ export default function Launch() {
           <div className="lf-grid">
             <label><L icon={IconAt}>X / Twitter</L><input value={f.twitter} onChange={set('twitter')} placeholder="https://x.com/…" /></label>
             <label><L icon={IconSend}>Telegram</L><input value={f.telegram} onChange={set('telegram')} placeholder="https://t.me/…" /></label>
-            <label><L icon={IconGlobe}>Website</L><input value={f.website} onChange={set('website')} placeholder="https://…" /></label>
+            <label><L icon={IconGlobe}>Website</L><span style={{ display: 'flex', gap: 6 }}><input style={{ flex: 1, minWidth: 0 }} value={f.website} onChange={set('website')} placeholder="https://…" />
+              <button type="button" onClick={autofill} disabled={!f.website.trim() || scan.busy || !!st.step}>{scan.busy ? 'Scanning…' : 'Auto-fill'}</button></span>
+              {scan.msg && <small className="muted">{scan.msg}</small>}</label>
             <label><L icon={IconChat}>Discord</L><input value={f.discord} onChange={set('discord')} placeholder="https://discord.gg/…" /></label>
             <label><L icon={IconArch}>Farcaster</L><input value={f.farcaster} onChange={set('farcaster')} placeholder="https://warpcast.com/…" /></label>
           </div>
