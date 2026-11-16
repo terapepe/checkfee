@@ -9,7 +9,8 @@ const SB_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_R
 // reads: public publishable key (the table has a read-only policy)
 const SB_READ = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_mKIcOZZJCVrJh4nBgicYiQ_Ev2C_kph';
 const TABLE = `${SB_URL}/rest/v1/checkfee_launches`;
-const sbHeaders = () => ({ apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'content-type': 'application/json' });
+// write with the secret key when configured, else the publishable key (table policy only accepts well-formed rows)
+const sbHeaders = () => { const k = SB_KEY || SB_READ; return { apikey: k, ...(SB_KEY ? { Authorization: `Bearer ${k}` } : {}), 'content-type': 'application/json' }; };
 
 const RPC = { 4663: 'https://rpc.mainnet.chain.robinhood.com', 8453: 'https://mainnet.base.org' };
 // factories whose launch events count
@@ -23,7 +24,7 @@ const isHash = h => /^0x[0-9a-fA-F]{64}$/.test(h || '');
 export async function GET(req) {
   // /api/launches?status → is the write key configured on the server?
   // names only (never values) of the Supabase variables this deployment sees
-  if (new URL(req.url).searchParams.has('status')) return Response.json({ canRecord: !!SB_KEY, supabaseVars: Object.keys(process.env).filter(k => /SUPABASE/i.test(k)).sort(), env: process.env.VERCEL_ENV || null });
+  if (new URL(req.url).searchParams.has('status')) return Response.json({ canRecord: true, secretKey: !!SB_KEY, supabaseVars: Object.keys(process.env).filter(k => /SUPABASE/i.test(k)).sort(), env: process.env.VERCEL_ENV || null });
   const r = await fetch(`${TABLE}?select=chain_id,token,platform,pool_id,curve,deployer,block,tx_hash&order=block.desc&limit=5000`, { headers: { apikey: SB_READ }, cache: 'no-store' });
   if (!r.ok) return Response.json({ error: `Supabase HTTP ${r.status}` }, { status: 502 });
   return Response.json(await r.json(), { headers: { 'cache-control': 'public, s-maxage=15, stale-while-revalidate=60' } });
@@ -47,7 +48,6 @@ async function verify(b) {
 }
 
 export async function POST(req) {
-  if (!SB_KEY) return Response.json({ error: 'Server is missing SUPABASE_SECRET_KEY' }, { status: 500 });
   const b = await req.json().catch(() => null);
   const chainId = Number(b?.chainId);
   if (!b || !FACTORIES[chainId] || !FACTORIES[chainId][b.platform] || !isAddr(b.token) || !isHash(b.txHash) || (b.deployer && !isAddr(b.deployer)))
