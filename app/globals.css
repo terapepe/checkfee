@@ -236,6 +236,9 @@ button { font: inherit; }
 .lp-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 26px 0 0; }
 .lp-tabs button { background: none; border: 0; color: var(--muted); padding: 10px 12px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; }
 .lp-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.lp-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; }
+.lp-pager button { background: none; border: 1px solid var(--line); color: var(--text); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.lp-pager button:disabled { opacity: .4; cursor: default; }
 .lp-table { display: flex; flex-direction: column; margin-top: 4px; }
 .lp-row { display: grid; grid-template-columns: 1fr 70px 140px 120px 120px; align-items: center; gap: 12px; padding: 12px 8px; border-bottom: 1px solid var(--line); }
 a.lp-row:hover { background: var(--panel); color: inherit; }

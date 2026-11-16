@@ -25,6 +25,8 @@ export function TokenBoard({ source = listCheckfeeTokens, title = 'Launches', de
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
   const [tab, setTab] = useState('new');
+  const [page, setPage] = useState(0);
+  const PER = 20;
   const [ethUsd, setEthUsd] = useState(null);
 
   useEffect(() => {
@@ -74,12 +76,12 @@ export function TokenBoard({ source = listCheckfeeTokens, title = 'Launches', de
       {rows && (
         <>
           <div className="lp-tabs">
-            {TABS.map(t => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
+            {TABS.map(t => <button key={t.id} type="button" className={tab === t.id ? 'on' : ''} onClick={() => { setTab(t.id); setPage(0); }}>{t.label}</button>)}
           </div>
           <div className="lp-table">
             <div className="lp-row lp-th"><span>Token</span><span>Pair</span><span>Bonding</span><span>Graph</span><span>Market cap</span></div>
             {list.length === 0 && <p className="empty">No tokens here yet.</p>}
-            {list.map(t => (
+            {list.slice(page * PER, page * PER + PER).map(t => (
               <a key={t.chainId + t.token} className="lp-row" href={href(t)}>
                 <span className="lp-tok">
                   <Logo t={t} />
@@ -96,6 +98,13 @@ export function TokenBoard({ source = listCheckfeeTokens, title = 'Launches', de
               </a>
             ))}
           </div>
+          {list.length > PER && (
+            <div className="lp-pager">
+              <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</button>
+              <span className="muted small">Page {page + 1} / {Math.ceil(list.length / PER)} · {list.length} tokens</span>
+              <button type="button" disabled={(page + 1) * PER >= list.length} onClick={() => setPage(p => p + 1)}>Next ›</button>
+            </div>
+          )}
         </>
       )}
     </>
