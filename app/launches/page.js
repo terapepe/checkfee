@@ -11,8 +11,8 @@ import { Sparkline, usdC, ago, Logo } from '../charts';
 import { IconBolt } from '../icons';
 
 const TABS = [
-  { id: 'mcap', label: 'Market cap' },
   { id: 'new', label: 'New' },
+  { id: 'mcap', label: 'Market cap' },
   { id: 'near', label: 'Near graduation' },
   { id: 'grad', label: 'Graduated' },
   { id: 'clanker', label: 'Clanker' },
@@ -24,7 +24,7 @@ const TABS = [
 export default function Launches() {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState('mcap');
+  const [tab, setTab] = useState('new');
   const [ethUsd, setEthUsd] = useState(null);
 
   useEffect(() => {
@@ -70,21 +70,6 @@ export default function Launches() {
 
       {!rows && <Spinner text="Collecting tokens from on-chain…" />}
       {err && <ErrorLine msg={err} />}
-
-      {rows && top.length > 0 && (
-        <>
-          <h3>Trending</h3>
-          <div className="trend">
-            {top.map(t => (
-              <a key={t.chainId + t.token} href={href(t)} className="trend-card">
-                <div className="trend-img"><Logo t={t} size={160} /></div>
-                <div className="trend-meta"><b>{t.name}</b> <em className="tag">{TAX[t.platform]?.label || 'Pons'}</em><ChainBadge id={t.chainId} label={false} /></div>
-                <div className="trend-mc">{usdC(ethUsd && t.mcapEth ? t.mcapEth * ethUsd : null)}</div>
-              </a>
-            ))}
-          </div>
-        </>
-      )}
 
       {rows && (
         <>
