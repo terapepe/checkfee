@@ -9,6 +9,7 @@ import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth } f
 import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../../icons';
 import { CopyTokenButton } from '../../copy-token';
+import { FollowButton } from '../../follow';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
 
@@ -36,7 +37,7 @@ export default function TaxTokenPage({ pf, chainId, token }) {
       holdersOn(chainId, token).then(setHolders).catch(() => {}); // explorer can lag: don't block the page
       const [sum, lb, px] = await Promise.all([taxSummary(pf, chainId, token), /^\d+$/.test(hb || '') ? BigInt(hb) : taxLaunchBlock(pf, chainId, token), getEthUsd()]);
       const [trs, t0] = lb ? await Promise.all([taxTrades(pf, chainId, sum.poolId, sum.tokenIs0, lb), blockTimeOn(chainId, lb)]) : [[], null];
-      setS({ ...sum, logo: ipfsUrl(sum.image), time: t0 }); setTrades(trs); setEthUsd(px);
+      setS({ ...sum, logo: ipfsUrl(sum.image), time: t0, block: lb }); setTrades(trs); setEthUsd(px);
     } catch (e) { setErr(e.shortMessage || e.message); }
   }, [pf, chainId, token]);
   useEffect(() => { load(); }, [load]);
@@ -72,6 +73,7 @@ export default function TaxTokenPage({ pf, chainId, token }) {
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
             <CopyTokenButton pf={pf} chainId={chainId} t={{ ...s, fee: s.buyTax }} />
             <button type="button" className="pill pill-btn" onClick={refresh} disabled={busy} title="Reload latest data"><IconRefresh />{busy ? 'Refreshing…' : 'Refresh'}</button>
+            <FollowButton chainId={chainId} platform={pf} s={s} />
             <a className="pill" href={url(s.token)} target="_blank" rel="noreferrer">{P.label} <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>

@@ -13,6 +13,7 @@ import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../.
 import { taxPlatformOf } from '../../../lib/tax';
 import TaxTokenPage from './tax';
 import { CopyTokenButton } from '../../copy-token';
+import { FollowButton } from '../../follow';
 
 const RANGES = [{ id: '1h', s: 3600 }, { id: '6h', s: 21600 }, { id: '1D', s: 86400 }, { id: '7D', s: 604800 }, { id: 'All', s: 0 }];
 
@@ -73,7 +74,7 @@ function PonsTokenPage() {
         tokenSummary(token, lb), getEthUsd(), lb ? blockTime(lb) : null,
       ]);
       const trs = lb ? await tradesOf(sum.curve, lb) : [];
-      setS({ ...sum, time: t0 }); setTrades(trs); setEthUsd(px);
+      setS({ ...sum, time: t0, block: lb }); setTrades(trs); setEthUsd(px);
     } catch (e) { setErr(e.message); }
   }, [ca]);
   useEffect(() => { load(); }, [load]);
@@ -108,6 +109,7 @@ function PonsTokenPage() {
             <span className="mono">· {short(s.token)}</span><CopyAddr a={s.token} />
             <CopyTokenButton pf="pons" t={{ ...s, image: s.logoUri, fee: s.creatorTaxBps / 100 }} />
             <button type="button" className="pill pill-btn" onClick={refresh} disabled={busy} title="Reload latest data"><IconRefresh />{busy ? 'Refreshing…' : 'Refresh'}</button>
+            <FollowButton chainId={4663} platform="pons" s={s} />
             <a className="pill" href={`${PONS}/${s.token}`} target="_blank" rel="noreferrer">Pons <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>

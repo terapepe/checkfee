@@ -5,7 +5,7 @@ import { formatUnits, zeroAddress, isAddress } from 'viem';
 import { checkWallet, checkTokens } from '../lib/pons';
 import { checkTaxWallet, checkTaxTokens } from '../lib/tax-check';
 import {
-  Logo, IconWallet, IconWallets, IconCoin, IconExternal, IconCopy, IconCheck,
+  Logo, IconWallet, IconWallets, IconCoin, IconSpark, IconExternal, IconCopy, IconCheck,
   IconAlert, IconRefresh, IconBolt, IconPower, TokenAvatar, IconInfo,
 } from './icons';
 
@@ -56,6 +56,7 @@ const NAV = [
     { href: '/', label: 'Check wallet', icon: IconWallet },
     { href: '/multi', label: 'Check multiple wallets', icon: IconWallets },
     { href: '/ca', label: 'Check by CA', icon: IconCoin },
+    { href: '/following', label: 'Following', icon: IconSpark },
   ] },
 ];
 
