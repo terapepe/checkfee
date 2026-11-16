@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { parseEther, formatEther, isAddress } from 'viem';
-import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt } from '../ui';
+import { parseEther, formatEther, isAddress, getAddress } from 'viem';
+import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt, parseAddresses } from '../ui';
 import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, IconText, IconAt, IconSend, IconGlobe, IconChat, IconArch, IconWallet, IconPercent, IconRecycle, IconCart, IconReceipt, IconLayers, IconCoin, IconSpark } from '../icons';
 
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
@@ -11,7 +11,7 @@ import { recordLaunch } from '../../lib/market';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge } from '../icons';
-import { distributorOf, createDistributorTx, routeToTx } from '../../lib/launch';
+import { distributorOf, createDistributorTx, routeToTx, MAX_EXEMPT } from '../../lib/launch';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1' };
 const DRAFT = 'checkfee_launch_draft';
@@ -95,12 +95,16 @@ export default function Launch() {
   try { quoteIn = f.buy ? parseEther(String(f.buy)) : 0n; } catch {}
   const total = info ? info.launchFee + quoteIn + serviceFee : null;
   const holders = !isC && f.dest === 'holders';
+  // Pons whitelist: wallets exempt from the snipe tax at launch (not saved in the draft)
+  const [wl, setWl] = useState('');
+  const wlParsed = parseAddresses(wl);
+  const wlOk = isC || (!wlParsed.bad.length && wlParsed.list.length <= MAX_EXEMPT);
   // empty fee wallet = the connected wallet
   const payoutOk = holders || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
   const lim = LIMIT[pf];
   const lenOk = f.name.trim().length <= lim.name && f.symbol.length <= lim.symbol;
   const feeOk = !(isC && Number(f.fee) < 1);
-  const ready = w.account && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && info?.canLaunch && credits != null && !st.step;
+  const ready = w.account && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && wlOk && info?.canLaunch && credits != null && !st.step;
 
   async function launch(e) {
     e.preventDefault();
@@ -114,7 +118,7 @@ export default function Launch() {
       if (isC) setSt({ step: `Preparing ${PL} launch…` });
       // contractURI JSON (image, description, links) — o1 shows the token from it
       const contractURI = isC ? await pinContractMeta(contractMeta(form, img.uri)) : '';
-      const tx = isC ? await buildTaxTx(pf, chainId, { account: from, form, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form, logo: img.uri, quoteIn });
+      const tx = isC ? await buildTaxTx(pf, chainId, { account: from, form, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form, logo: img.uri, quoteIn, exempt: wlParsed.list.map(a => getAddress(a)) });
       // unused credit (fee paid, not yet launched) → don't charge again
       const left = CHECKFEE_FEE_ON ? await launchCredits(from, chainId) : Infinity;
       if (left > 0) {
@@ -254,6 +258,14 @@ export default function Launch() {
             <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder={w.account ? `Connected wallet (${short(w.account)})` : 'Connected wallet'} /></label>
             <p className="muted small">{isC ? 'Receives the creator share of the trading fee (in ETH), claimable on the token page.' : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Leave empty to use the connected wallet; paste an address only to send fees elsewhere.</p>
           </>}
+          {!isC && (
+            <label><L icon={IconLayers}>Whitelisted wallets (optional, up to {MAX_EXEMPT})</L>
+              <textarea className="mono" rows={3} value={wl} onChange={e => setWl(e.target.value)} placeholder={'0x…\n0x…'} />
+              <small className="muted">Exempt from the snipe tax at launch, e.g. your team's bundle wallets. The launching wallet and the fee wallet are always exempt. {wlParsed.list.length > 0 && `${wlParsed.list.length}/${MAX_EXEMPT}`}</small>
+              {wlParsed.bad.length > 0 && <small className="err">Invalid: {wlParsed.bad.slice(0, 3).join(', ')}</small>}
+              {wlParsed.list.length > MAX_EXEMPT && <small className="err">Pons allows up to {MAX_EXEMPT} wallets.</small>}
+            </label>
+          )}
           <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>
 
           <div className="sum">
