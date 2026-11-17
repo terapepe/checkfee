@@ -1,0 +1,131 @@
+'use client';
+// Token page for a Pangea v4 coin (Robinhood): price from the v4 pool, creator fees from the fee hook + FeeSplitterV4
+import { useEffect, useState, useCallback } from 'react';
+import { formatUnits } from 'viem';
+import { ipfsUrl } from '../../../lib/market';
+import { CHAINS, holdersOn, switchChain, waitOn } from '../../../lib/chains';
+import { pangeaSummary, pangeaFees, pangeaClaimTx, pangeaClaimUnclaimedTx } from '../../../lib/pangea';
+import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
+import { usdC, priceUsd, compact, Logo } from '../../charts';
+import { IconExternal, ChainBadge, IconRefresh } from '../../icons';
+
+const CHAIN = 4663;
+const EXPLORER = CHAINS[CHAIN].explorer;
+
+export default function PangeaTokenPage({ token }) {
+  const w = useWallet();
+  const [s, setS] = useState(null);
+  const [holders, setHolders] = useState(null);
+  const [ethUsd, setEthUsd] = useState(null);
+  const [err, setErr] = useState('');
+  const [rk, setRk] = useState(0);
+  const load = useCallback(async () => {
+    try {
+      holdersOn(CHAIN, token).then(setHolders).catch(() => {});
+      const [sum, px] = await Promise.all([pangeaSummary(token), getEthUsd()]);
+      setS({ ...sum, logo: ipfsUrl(sum.image) }); setEthUsd(px); setRk(k => k + 1);
+    } catch (e) { setErr(e.shortMessage || e.message); }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  if (err) return <ErrorLine msg={err} onRetry={() => { setErr(''); load(); }} />;
+  if (!s) return <Spinner text="Loading token data…" />;
+  const px = ethUsd || 0;
+  const soc = s.socials;
+  const links = [['X', soc.twitter], ['Telegram', soc.telegram], ['Website', soc.website], ['Discord', soc.discord], ['Farcaster', soc.farcaster]].filter(([, u]) => u);
+  const supplyN = Number(formatUnits(s.supply, 9));
+  return (
+    <div className="tp">
+      <a className="muted small" href="/launches">‹ Launches</a>
+      <div className="tp-head">
+        <Logo t={s} size={64} />
+        <div className="tp-name">
+          <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">Pangea</em><ChainBadge id={CHAIN} /></h1>
+          <div className="muted small tp-sub">
+            <span>creator <a className="mono" href={`${EXPLORER}/address/${s.creator}`} target="_blank" rel="noreferrer">{short(s.creator)}</a></span>
+            <span>· ETH pair</span><span className="mono">· {short(s.token)}</span>
+            <button type="button" className="pill pill-btn" onClick={load}><IconRefresh />Refresh</button>
+            <a className="pill" href={`${EXPLORER}/token/${s.token}`} target="_blank" rel="noreferrer">Explorer <IconExternal /></a>
+            {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
+          </div>
+        </div>
+        <div className="tp-mc">
+          <span className="muted small">Market cap</span>
+          <b>{usdC(s.mcapEth != null ? s.mcapEth * px : null)}</b>
+          <span className="muted small">{priceUsd(s.priceEth != null ? s.priceEth * px : null)} price</span>
+        </div>
+      </div>
+      <div className="tp-grid">
+        <div>
+          <div className="tp-stats">
+            <div><span>Holders</span><b>{holders ? holders.count.toLocaleString('en-US') : '…'}</b></div>
+            <div><span>Supply</span><b>{compact(supplyN)}</b></div>
+            <div><span>Fee</span><b>{s.feeBps / 100}% buy &amp; sell</b></div>
+            <div><span>Pool</span><b>Uniswap v4</b></div>
+          </div>
+          {s.description && (<><h3>About</h3><p className="tp-about">{s.description}</p></>)}
+        </div>
+        <div className="tp-side">
+          <PangeaFeeBox key={rk} s={s} account={w.account} connect={w.connect} ethUsd={ethUsd} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Fees wait in the hook → splitter; the claim tx (anyone can send it) pays the creator 80%, Pangea 20%
+function PangeaFeeBox({ s, account, connect, ethUsd }) {
+  const [f, setF] = useState(null);
+  const [err, setErr] = useState('');
+  const [st, setSt] = useState({ busy: '', hash: '' });
+  const load = useCallback(() => { setErr(''); pangeaFees(s.token, s.splitter, s.creator).then(setF).catch(e => setErr(e.shortMessage || e.message)); }, [s]);
+  useEffect(() => { load(); }, [load]);
+
+  async function claim() {
+    const eth = window.ethereum;
+    setSt({ busy: 'Confirm the claim in MetaMask…', hash: '' }); setErr('');
+    try {
+      const [from] = await eth.request({ method: 'eth_requestAccounts' });
+      await switchChain(eth, CHAIN);
+      let hash;
+      if (f.pending > 0n) {
+        const tx = pangeaClaimTx(s.token, s.splitter);
+        hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
+        setSt({ busy: 'Waiting for confirmation…', hash });
+        if ((await waitOn(CHAIN, hash)).status !== 'success') throw new Error('Claim failed');
+      }
+      if (f.unclaimed > 0n && from.toLowerCase() === s.creator.toLowerCase()) {
+        setSt({ busy: 'Confirm the held payout in MetaMask…', hash });
+        const tx = pangeaClaimUnclaimedTx(s.splitter, from);
+        hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
+        if ((await waitOn(CHAIN, hash)).status !== 'success') throw new Error('Claim failed');
+      }
+      setSt({ busy: '', hash }); load();
+    } catch (e) {
+      setSt({ busy: '', hash: '' }); setErr(e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message));
+    }
+  }
+
+  if (f == null && !err) return <div className="card feebox"><Spinner text="Reading creator fees…" /></div>;
+  const isOwner = account && account.toLowerCase() === s.creator.toLowerCase();
+  const amt = f?.claimable || 0n;
+  return (
+    <div className="card feebox">
+      <span className="muted small">Claimable creator fees</span>
+      <b className="fb-amt">{fmt(amt)} ETH</b>
+      <span className="muted small">{ethUsd ? fmtUsd(toEth(amt) * ethUsd) : '—'}</span>
+      <small className="muted">Pangea keeps 20% of the trading fee; the claim sends the rest straight to the creator wallet.</small>
+      <div className="fb-row">
+        <span className="muted small">Creator wallet</span>
+        <a className="mono small" href={`${EXPLORER}/address/${s.creator}`} target="_blank" rel="noreferrer">{short(s.creator)}</a>
+        {isOwner && <em className="tag ok">you</em>}
+      </div>
+      {!amt ? <small className="muted">Nothing to claim right now.</small>
+        : isOwner || (f.unclaimed === 0n && account) ? <button type="button" className="btn-primary big-btn" disabled={!!st.busy} onClick={claim}>{st.busy || (isOwner ? 'Claim fees' : 'Claim to creator wallet')}</button>
+        : account ? <SwitchToWallet target={s.creator} />
+        : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
+      {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}
+      {err && <ErrorLine msg={err} onRetry={load} />}
+    </div>
+  );
+}

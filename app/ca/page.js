@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import {
   TokenCard, RecipientBlock, fetchTokens, fetchTaxTokens, PageHeader, ErrorLine, Spinner, Stats, parseAddresses,
-  fmt, fmtUsd, toEth,
+  fmt, fmtUsd, toEth, short,
 } from '../ui';
 import { IconCoin } from '../icons';
 import { zeroAddress, getAddress } from 'viem';
@@ -11,6 +11,7 @@ import { TokenTable, rowsOf, SourceList } from '../check-ui';
 import { claimPlan, ClaimSteps } from '../ui';
 import { CHAIN_IDS } from '../../lib/chains';
 import { TAX, TAX_KEYS, taxPlatformOf } from '../../lib/tax';
+import { isPangeaToken } from '../../lib/pangea';
 
 export default function ByCA() {
   const [input, setInput] = useState('');
@@ -19,23 +20,27 @@ export default function ByCA() {
   const [err, setErr] = useState('');
   const [pf, togglePf] = usePlatforms();
   const [clk, setClk] = useState(null);
+  const [pg, setPg] = useState([]); // Pangea CAs: fees shown on their token page
 
   async function run() {
     const { list, bad } = parseAddresses(input);
     if (bad.length) return setErr(`Invalid CA: ${bad.join(', ')}`);
-    setErr(''); setLoading(true); setRes(null); setClk(null);
+    setErr(''); setLoading(true); setRes(null); setClk(null); setPg([]);
     try {
       // sort CAs by platform (Clanker factory knows its tokens), skip a platform that is switched off
       // which platform + network each CA belongs to (only the networks switched on)
       const nets = CHAIN_IDS.filter(id => pf[`n${id}`]);
-      const kind = await Promise.all(list.map(a => taxPlatformOf(getAddress(a), nets).catch(() => null)));
+      const pang = pf.n4663 ? await Promise.all(list.map(a => isPangeaToken(getAddress(a)))) : list.map(() => false);
+      const pgs = list.filter((_, i) => pang[i]).map(a => getAddress(a));
+      setPg(pgs);
+      const kind = await Promise.all(list.map((a, i) => pang[i] ? 'pangea' : taxPlatformOf(getAddress(a), nets).catch(() => null)));
       const po = list.filter((_, i) => !kind[i]);
       const [p, ...tax] = await Promise.all([
         ponsOn(pf) && po.length ? fetchTokens(po) : null,
         ...taxJobs(pf).map(([k, id]) => { const cas = list.filter((_, i) => kind[i]?.pf === k && kind[i]?.chainId === id); return cas.length ? fetchTaxTokens(k, cas, id) : null; }),
       ]);
       const t = tax.filter(Boolean);
-      if (!p && !t.length) throw new Error('No token found on the selected platforms');
+      if (!p && !t.length && !pgs.length) throw new Error('No token found on the selected platforms');
       setRes(p); setClk(t);
     } catch (e) { setErr(e.message); }
     setLoading(false);
@@ -71,6 +76,12 @@ export default function ByCA() {
       {loading && <Spinner />}
       {err && <ErrorLine msg={err} onRetry={input.trim() ? run : null} disabled={loading} />}
 
+      {pg.length > 0 && (
+        <div className="card">
+          <p className="small"><b>Pangea</b> tokens: creator fees and the claim are on the token page.</p>
+          {pg.map(a => <a key={a} className="pill mono" href={`/launches/${a}?pf=pangea`}>{short(a)} →</a>)}
+        </div>
+      )}
       {(res || clk?.length) ? (
         <section className="ck">
           <div className="card ck-summary">

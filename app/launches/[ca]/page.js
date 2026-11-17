@@ -12,6 +12,8 @@ import { PriceChart, usdC, priceUsd, ago, compact, Logo } from '../../charts';
 import { IconExternal, IconCopy, IconCheck, ChainBadge, IconRefresh } from '../../icons';
 import { taxPlatformOf } from '../../../lib/tax';
 import TaxTokenPage from './tax';
+import PangeaTokenPage from './pangea';
+import { isPangeaToken } from '../../../lib/pangea';
 import { CopyTokenButton } from '../../copy-token';
 import { FollowButton } from '../../follow';
 
@@ -45,10 +47,16 @@ export default function TokenPage() {
     // hint from the launch page: ?pf=pons|clanker|o1&chain=…
     const hpf = sp.get('pf');
     if (hpf === 'pons') { setKind('pons'); return; }
+    if (hpf === 'pangea') { setKind('pangea'); return; }
     if ((hpf === 'clanker' || hpf === 'o1') && q) { setKind({ pf: hpf, chainId: q }); return; }
-    taxPlatformOf(getAddress(ca), q ? [q] : undefined).then(k => setKind(k || 'pons')).catch(() => setKind('pons'));
+    // Pangea coins end in 6ea (Robinhood only)
+    (async () => {
+      if ((!q || q === 4663) && await isPangeaToken(getAddress(ca))) return setKind('pangea');
+      setKind(await taxPlatformOf(getAddress(ca), q ? [q] : undefined).catch(() => null) || 'pons');
+    })();
   }, [ca]);
   if (!kind) return <Spinner text="Loading token data…" />;
+  if (kind === 'pangea') return <PangeaTokenPage token={getAddress(ca)} />;
   return kind === 'pons' ? <PonsTokenPage /> : <TaxTokenPage pf={kind.pf} chainId={kind.chainId} token={getAddress(ca)} />;
 }
 

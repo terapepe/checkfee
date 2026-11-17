@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { listCheckfeeTokens, tokenSummary, tradesOf, blockTime, getLogsChunked, ipfsUrl } from '../../lib/market';
 import { TAX, taxSummary, taxTrades } from '../../lib/tax';
 import { blockTimeOn } from '../../lib/chains';
+import { pangeaSummary } from '../../lib/pangea';
 import { ChainBadge } from '../icons';
 
 const href = t => `/launches/${t.token}${t.chainId && t.chainId !== 4663 ? `?chain=${t.chainId}` : ''}`;
@@ -36,6 +37,10 @@ export function TokenBoard({ source = listCheckfeeTokens, title = 'Launches', de
         setEthUsd(px);
         const out = await Promise.all(list.map(async l => {
           try {
+            if (l.platform === 'pangea') {
+              const [s, time] = await Promise.all([pangeaSummary(l.token), blockTimeOn(l.chainId, l.block)]);
+              return { ...s, logo: ipfsUrl(s.image), platform: 'pangea', chainId: 4663, phase: 0, progress: null, time, spark: [], trades: 0 };
+            }
             if (TAX[l.platform]) {
               const [s, trades, time] = await Promise.all([taxSummary(l.platform, l.chainId, l.token), taxTrades(l.platform, l.chainId, l.poolId, false, l.block, false), blockTimeOn(l.chainId, l.block)]);
               // native ETH is always currency0 in v4, so the token side is known without the summary
@@ -86,7 +91,7 @@ export function TokenBoard({ source = listCheckfeeTokens, title = 'Launches', de
                 <span className="lp-tok">
                   <Logo t={t} />
                   <span>
-                    <b>{t.name}</b> <span className="muted">{t.symbol}</span> <em className="tag">{TAX[t.platform]?.label || 'Pons'}</em><ChainBadge id={t.chainId} />
+                    <b>{t.name}</b> <span className="muted">{t.symbol}</span> <em className="tag">{TAX[t.platform]?.label || (t.platform === 'pangea' ? 'Pangea' : 'Pons')}</em><ChainBadge id={t.chainId} />
                     <small className="muted"><span className="mono">{short(t.deployer)}</span> · {ago(t.time)} · {t.trades} trades</small>
                   </span>
                 </span>

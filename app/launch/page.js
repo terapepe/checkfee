@@ -190,7 +190,6 @@ export default function Launch() {
       // hints for the token page: platform, chain, launch block → no detection / log scan needed
       const page = L?.token ? `/launches/${L.token}?pf=${pf}&chain=${chainId}&b=${rc.blockNumber}` : '';
       if (note) { setSt({ step: '', hash, token: '', err: note, link: page }); return; }
-      if (L?.token && isP) { setSt({ step: '', hash, token: L.token }); return; } // Pangea token page: not yet
       if (L?.token) { location.href = page; return; } // go straight to the token page
       setSt({ step: '', hash, token: '' });
     } catch (er) {
