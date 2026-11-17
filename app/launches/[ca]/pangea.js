@@ -42,7 +42,7 @@ export default function PangeaTokenPage({ token }) {
         <div className="tp-name">
           <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">Pangea</em><ChainBadge id={CHAIN} /></h1>
           <div className="muted small tp-sub">
-            <span>creator <a className="mono" href={`${EXPLORER}/address/${s.creator}`} target="_blank" rel="noreferrer">{short(s.creator)}</a></span>
+            <span>by <a className="mono" href={`${EXPLORER}/address/${s.launcher}`} target="_blank" rel="noreferrer">{short(s.launcher)}</a></span>
             <span>· ETH pair</span><span className="mono">· {short(s.token)}</span>
             <button type="button" className="pill pill-btn" onClick={load}><IconRefresh />Refresh</button>
             <a className="pill" href={`${EXPLORER}/token/${s.token}`} target="_blank" rel="noreferrer">Explorer <IconExternal /></a>
@@ -94,7 +94,7 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
         setSt({ busy: 'Waiting for confirmation…', hash });
         if ((await waitOn(CHAIN, hash)).status !== 'success') throw new Error('Claim failed');
       }
-      if (f.unclaimed > 0n && from.toLowerCase() === s.creator.toLowerCase()) {
+      if (f.unclaimed > 0n && from.toLowerCase() === s.creator.toLowerCase()) { // only the payee itself can pull a held payout
         setSt({ busy: 'Confirm the held payout in MetaMask…', hash });
         const tx = pangeaClaimUnclaimedTx(s.splitter, from);
         hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
@@ -107,21 +107,22 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
   }
 
   if (f == null && !err) return <div className="card feebox"><Spinner text="Reading creator fees…" /></div>;
-  const isOwner = account && account.toLowerCase() === s.creator.toLowerCase();
+  const isOwner = account && [s.creator, s.launcher].some(a => a.toLowerCase() === account.toLowerCase());
   const amt = f?.claimable || 0n;
   return (
     <div className="card feebox">
       <span className="muted small">Claimable creator fees</span>
       <b className="fb-amt">{fmt(amt)} ETH</b>
       <span className="muted small">{ethUsd ? fmtUsd(toEth(amt) * ethUsd) : '—'}</span>
-      <small className="muted">Pangea keeps 20% of the trading fee; the claim sends the rest straight to the creator wallet.</small>
+      <small className="muted">Pangea keeps 20% of the trading fee; the claim sends the rest straight to the {s.toVault ? 'holder-rewards vault' : 'creator wallet'}.</small>
       <div className="fb-row">
-        <span className="muted small">Creator wallet</span>
+        <span className="muted small">{s.toVault ? 'Fees go to' : 'Creator wallet'}</span>
         <a className="mono small" href={`${EXPLORER}/address/${s.creator}`} target="_blank" rel="noreferrer">{short(s.creator)}</a>
+        {s.toVault && <em className="tag">holder rewards vault</em>}
         {isOwner && <em className="tag ok">you</em>}
       </div>
       {!amt ? <small className="muted">Nothing to claim right now.</small>
-        : isOwner || (f.unclaimed === 0n && account) ? <button type="button" className="btn-primary big-btn" disabled={!!st.busy} onClick={claim}>{st.busy || (isOwner ? 'Claim fees' : 'Claim to creator wallet')}</button>
+        : isOwner || s.toVault || (f.unclaimed === 0n && account) ? <button type="button" className="btn-primary big-btn" disabled={!!st.busy} onClick={claim}>{st.busy || (s.toVault ? 'Send fees to the vault' : isOwner ? 'Claim fees' : 'Claim to creator wallet')}</button>
         : account ? <SwitchToWallet target={s.creator} />
         : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
       {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}

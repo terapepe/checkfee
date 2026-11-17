@@ -39,7 +39,7 @@ export function TokenBoard({ source = listCheckfeeTokens, title = 'Launches', de
           try {
             if (l.platform === 'pangea') {
               const [s, time] = await Promise.all([pangeaSummary(l.token), blockTimeOn(l.chainId, l.block)]);
-              return { ...s, logo: ipfsUrl(s.image), platform: 'pangea', chainId: 4663, deployer: l.deployer || s.creator, phase: 0, progress: null, time, spark: [], trades: 0 };
+              return { ...s, logo: ipfsUrl(s.image), platform: 'pangea', chainId: 4663, deployer: l.deployer || s.launcher, phase: 0, progress: null, time, spark: [], trades: 0 };
             }
             if (TAX[l.platform]) {
               const [s, trades, time] = await Promise.all([taxSummary(l.platform, l.chainId, l.token), taxTrades(l.platform, l.chainId, l.poolId, false, l.block, false), blockTimeOn(l.chainId, l.block)]);
