@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { formatUnits } from 'viem';
 import { ipfsUrl } from '../../../lib/market';
 import { CHAINS, holdersOn, switchChain, waitOn } from '../../../lib/chains';
-import { pangeaSummary, pangeaFees, pangeaClaimTx, pangeaClaimUnclaimedTx } from '../../../lib/pangea';
+import { pangeaSummary, pangeaFees, pangeaPaid, pangeaClaimTx, pangeaClaimUnclaimedTx } from '../../../lib/pangea';
 import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
 import { usdC, priceUsd, compact, Logo } from '../../charts';
 import { IconExternal, ChainBadge, IconRefresh } from '../../icons';
@@ -78,7 +78,11 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
   const [f, setF] = useState(null);
   const [err, setErr] = useState('');
   const [st, setSt] = useState({ busy: '', hash: '' });
-  const load = useCallback(() => { setErr(''); pangeaFees(s.token, s.splitter, s.creator).then(setF).catch(e => setErr(e.shortMessage || e.message)); }, [s]);
+  const [paid, setPaid] = useState(null);
+  const load = useCallback(() => {
+    setErr(''); pangeaFees(s.token, s.splitter, s.creator).then(setF).catch(e => setErr(e.shortMessage || e.message));
+    pangeaPaid(s.splitter).then(setPaid).catch(() => {});
+  }, [s]);
   useEffect(() => { load(); }, [load]);
 
   async function claim() {
@@ -115,6 +119,10 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
       <b className="fb-amt">{fmt(amt)} ETH</b>
       <span className="muted small">{ethUsd ? fmtUsd(toEth(amt) * ethUsd) : '—'}</span>
       <small className="muted">Pangea keeps 20% of the trading fee; the claim sends the rest straight to the {s.toVault ? 'holder-rewards vault' : 'creator wallet'}.</small>
+      <div className="fb-row">
+        <span className="muted small">Already paid out</span>
+        <b className="small">{paid == null ? '…' : `${fmt(paid)} ETH`}{paid && ethUsd ? ` · ${fmtUsd(toEth(paid) * ethUsd)}` : ''}</b>
+      </div>
       <div className="fb-row">
         <span className="muted small">{s.toVault ? 'Fees go to' : 'Creator wallet'}</span>
         <a className="mono small" href={`${EXPLORER}/address/${s.creator}`} target="_blank" rel="noreferrer">{short(s.creator)}</a>
