@@ -86,6 +86,7 @@ function PonsTokenPage() {
     } catch (e) { setErr(e.message); }
   }, [ca]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (s?.name) document.title = `${s.name} ($${s.symbol}) · CheckFee v1`; }, [s?.name, s?.symbol]);
   const [busy, setBusy] = useState(false);
   const [rk, setRk] = useState(0); // remounts the fee box so it re-reads too
   const refresh = async () => { setBusy(true); await load(); setRk(k => k + 1); setBusy(false); };

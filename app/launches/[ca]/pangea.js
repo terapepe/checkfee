@@ -28,6 +28,7 @@ export default function PangeaTokenPage({ token }) {
     } catch (e) { setErr(e.shortMessage || e.message); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (s?.name) document.title = `${s.name} ($${s.symbol}) · CheckFee v1`; }, [s?.name, s?.symbol]);
 
   if (err) return <ErrorLine msg={err} onRetry={() => { setErr(''); load(); }} />;
   if (!s) return <Spinner text="Loading token data…" />;
