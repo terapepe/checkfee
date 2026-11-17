@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { formatUnits } from 'viem';
 import { ipfsUrl } from '../../../lib/market';
 import { CHAINS, holdersOn, switchChain, waitOn } from '../../../lib/chains';
-import { pangeaSummary, pangeaFees, pangeaPaid, pangeaClaimTx, pangeaClaimUnclaimedTx } from '../../../lib/pangea';
+import { pangeaSummary, pangeaFees, pangeaPaid, pangeaClaimTx, pangeaClaimUnclaimedTx, pangeaMetaAuthority, pangeaSetMetaTx } from '../../../lib/pangea';
+import { contractMeta, pinContractMeta } from '../../../lib/tax';
 import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
 import { usdC, priceUsd, compact, Logo } from '../../charts';
 import { IconExternal, ChainBadge, IconRefresh } from '../../icons';
@@ -63,6 +64,7 @@ export default function PangeaTokenPage({ token }) {
             <div><span>Fee</span><b>{s.feeBps / 100}% buy &amp; sell</b></div>
             <div><span>Pool</span><b>Uniswap v4</b></div>
           </div>
+          {!s.linksOk && <MetaFix s={s} account={w.account} onDone={load} />}
           {s.description && (<><h3>About</h3><p className="tp-about">{s.description}</p></>)}
         </div>
         <div className="tp-side">
@@ -135,6 +137,36 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
         : <button type="button" className="btn-ghost" onClick={connect}>Connect wallet to claim</button>}
       {st.hash && <a className="ok small" href={`${EXPLORER}/tx/${st.hash}`} target="_blank" rel="noreferrer">Transaction {short(st.hash)} <IconExternal /></a>}
       {err && <ErrorLine msg={err} onRetry={load} />}
+    </div>
+  );
+}
+
+// Links saved under "links" only (older CheckFee launches): Pangea doesn't show them. The metadata authority re-publishes them.
+function MetaFix({ s, account, onDone }) {
+  const [auth, setAuth] = useState(null);
+  const [st, setSt] = useState({ busy: '', err: '' });
+  useEffect(() => { pangeaMetaAuthority(s.token).then(setAuth).catch(() => {}); }, [s.token]);
+  if (!auth || !account || auth.toLowerCase() !== account.toLowerCase()) return null;
+  async function run() {
+    const eth = window.ethereum;
+    setSt({ busy: 'Uploading metadata…', err: '' });
+    try {
+      const uri = await pinContractMeta(contractMeta({ name: s.name, symbol: s.symbol, description: s.description, ...s.socials }, s.image));
+      const [from] = await eth.request({ method: 'eth_requestAccounts' });
+      await switchChain(eth, CHAIN);
+      setSt({ busy: 'Confirm in MetaMask…', err: '' });
+      const tx = pangeaSetMetaTx(s.token, uri);
+      const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x0' }] });
+      setSt({ busy: 'Confirming…', err: '' });
+      if ((await waitOn(CHAIN, hash)).status !== 'success') throw new Error('Transaction failed');
+      setSt({ busy: '', err: '' }); onDone?.();
+    } catch (e) { setSt({ busy: '', err: e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message) }); }
+  }
+  return (
+    <div className="card">
+      <p className="small">Pangea doesn't show this token's X / website / Telegram links yet (they are saved in a format it doesn't read). As the metadata owner you can re-publish them (one transaction).</p>
+      <button type="button" className="btn-primary sm" disabled={!!st.busy} onClick={run}>{st.busy || 'Publish links for Pangea'}</button>
+      {st.err && <ErrorLine msg={st.err} />}
     </div>
   );
 }
