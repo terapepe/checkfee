@@ -15,7 +15,7 @@ const sbHeaders = () => { const k = SB_KEY || SB_READ; return { apikey: k, ...(S
 const RPC = { 4663: 'https://rpc.mainnet.chain.robinhood.com', 8453: 'https://mainnet.base.org' };
 // factories whose launch events count
 const FACTORIES = {
-  4663: { pons: '0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e', clanker: '0xca111dcdd2ce924c3378d6514fdcbc46217bca16', o1: '0x29cad997f3cf1aa9ca51e12be29c09e3e00f119a' },
+  4663: { pons: '0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e', clanker: '0xca111dcdd2ce924c3378d6514fdcbc46217bca16', o1: '0x29cad997f3cf1aa9ca51e12be29c09e3e00f119a', pangea: '0xaa61764bd44df5468caae856232ce9b711512449' },
   8453: { clanker: '0x572e88d3cd7f23e4241eb6cedd96667271bf09a0', o1: '0x53c59d8d335681d58f564cf62073fa3c57cf81ee' },
 };
 const isAddr = a => /^0x[0-9a-fA-F]{40}$/.test(a || '');
