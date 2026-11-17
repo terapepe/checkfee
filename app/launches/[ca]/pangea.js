@@ -46,7 +46,7 @@ export default function PangeaTokenPage({ token }) {
             <span>by <a className="mono" href={`${EXPLORER}/address/${s.launcher}`} target="_blank" rel="noreferrer">{short(s.launcher)}</a></span>
             <span>· ETH pair</span><span className="mono">· {short(s.token)}</span>
             <button type="button" className="pill pill-btn" onClick={load}><IconRefresh />Refresh</button>
-            <a className="pill" href={`${EXPLORER}/token/${s.token}`} target="_blank" rel="noreferrer">Explorer <IconExternal /></a>
+            <a className="pill" href={`https://www.pangea.trade/app/t/${s.token}`} target="_blank" rel="noreferrer">Pangea <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
           </div>
         </div>
