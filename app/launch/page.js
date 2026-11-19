@@ -12,7 +12,7 @@ import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContract
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge } from '../icons';
 import { distributorOf, createDistributorTx, routeToTx, MAX_EXEMPT } from '../../lib/launch';
-import { readPangeaInfo, buildPangeaTx, parsePangeaLaunch, PANGEA_START_MCAP_USD } from '../../lib/pangea';
+import { readPangeaInfo, buildPangeaTx, parsePangeaLaunch, PANGEA_START_MCAP_USD, PANGEA_WORLDS, quotePangeaMulti, submitPangeaMulti, waitPangeaLive } from '../../lib/pangea';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1', pangea: 'Pangea' };
 const DRAFT = 'checkfee_launch_draft';
@@ -29,7 +29,7 @@ const DESTS = [
   ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
 ];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD, pmode: 'multi', worlds: ['robinhood', 'base', 'ethereum', 'bsc'] };
 
 export default function Launch() {
   const w = useWallet();
@@ -38,7 +38,8 @@ export default function Launch() {
   const [info, setInfo] = useState(null);
   const [pf, setPf] = useState('pons');
   const isC = !!TAX[pf]; // Clanker / o1: same v4 tax launch
-  const isP = pf === 'pangea'; // Pangea v4: Robinhood only, no first buy
+  const isP = pf === 'pangea'; // Pangea v4, no first buy
+  const isPM = isP && f.pmode === 'multi'; // Pangea multi-chain: platform-paid launch, one fee paid on Robinhood
   const pons = pf === 'pons';
   const PL = PLATFORMS[pf];
   const [net, setNet] = useState(4663);
@@ -137,7 +138,7 @@ export default function Launch() {
   const payoutOk = holders || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
   const lim = LIMIT[pf];
   const lenOk = f.name.trim().length <= lim.name && f.symbol.length <= lim.symbol;
-  const feeOk = !(!pons && Number(f.fee) < 1) && !(isP && !(Number(f.mcap) > 0));
+  const feeOk = !(!pons && Number(f.fee) < 1) && !(isP && !(Number(f.mcap) > 0)) && !(isPM && !f.worlds?.length);
   const ready = w.account && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && wlOk && info?.canLaunch && credits != null && !st.step;
 
   async function launch(e) {
@@ -151,12 +152,12 @@ export default function Launch() {
       // simulate the launch first so no fee is charged for a launch that would fail
       if (!pons) setSt({ step: `Preparing ${PL} launch…` });
       // contractURI JSON (image, description, links) — o1 shows the token from it
-      const contractURI = !pons ? await pinContractMeta(contractMeta(form, img.uri)) : '';
-      const tx = isP ? await pangeaTx(from, form, contractURI) : isC ? await buildTaxTx(pf, chainId, { account: from, form, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form, logo: img.uri, quoteIn, exempt: wlParsed.list.map(a => getAddress(a)) });
+      const contractURI = !pons && !isPM ? await pinContractMeta(contractMeta(form, img.uri)) : '';
+      const tx = isPM ? await pangeaQuote(from, form) : isP ? await pangeaTx(from, form, contractURI) : isC ? await buildTaxTx(pf, chainId, { account: from, form, image: img.uri, quoteIn, contractURI }) : await buildLaunchTx({ account: from, form, logo: img.uri, quoteIn, exempt: wlParsed.list.map(a => getAddress(a)) });
       // unused credit (fee paid, not yet launched) → don't charge again
       const left = CHECKFEE_FEE_ON ? await launchCredits(from, chainId) : Infinity;
       if (left > 0) {
-        setSt({ step: 'Confirm the launch in MetaMask…' });
+        setSt({ step: isPM ? `Pay the Pangea launch fee (${tx.feeText}) in MetaMask…` : 'Confirm the launch in MetaMask…' });
       } else {
         setSt({ step: 'Step 1/2: CheckFee service fee 0.00003 ETH…' });
         const h = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: CHECKFEE_WALLET, value: '0x' + CHECKFEE_LAUNCH_FEE.toString(16) }] });
@@ -164,14 +165,15 @@ export default function Launch() {
         if (rc0.status !== 'success') throw new Error('Service fee transfer failed');
         markFeePaid(from, chainId);
         setCredits(1);
-        setSt({ step: 'Step 2/2: confirm the launch in MetaMask…' });
+        setSt({ step: isPM ? `Step 2/2: pay the Pangea launch fee (${tx.feeText}) in MetaMask…` : 'Step 2/2: confirm the launch in MetaMask…' });
       }
       const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
       setSt({ step: 'Waiting for on-chain confirmation…', hash });
       const rc = await waitOn(chainId, hash);
-      if (rc.status !== 'success') throw new Error('Launch transaction failed');
+      if (rc.status !== 'success') throw new Error(isPM ? 'The fee payment reverted (no fee was taken)' : 'Launch transaction failed');
       clearFeePaid(from, chainId);
       try { localStorage.removeItem(DRAFT); } catch {}
+      if (isPM) return await pangeaHandOver(from, tx, hash);
       const L = isC ? parseTaxLaunch(pf, chainId, rc.logs) : isP ? parsePangeaLaunch(rc.logs) : parseLaunch(rc.logs);
       // add it to the site's launch list (server side)
       if (L?.token) await recordLaunch({ chainId, platform: pf, token: L.token, poolId: L.poolId, curve: L.curve, deployer: from, block: rc.blockNumber, txHash: hash });
@@ -203,6 +205,36 @@ export default function Launch() {
     if (!ethUsd) throw new Error('ETH price unavailable, try again');
     setSt({ step: 'Finding a 6ea token address (~15s)…' });
     return buildPangeaTx({ account: from, name: form.name.trim(), symbol: form.symbol.trim(), creator: form.payout, metadataURI, feeBps: Math.round(Number(form.fee) * 100), mcapEth: Number(form.mcap) / ethUsd });
+  }
+
+  // Pangea multi-chain: quote the platform-paid launch (metadata pinned on Pangea's IPFS, one fee on Robinhood)
+  async function pangeaQuote(from, form) {
+    setSt({ step: `Getting Pangea's quote for ${form.worlds.length} chains…` });
+    const q = await quotePangeaMulti({
+      name: form.name.trim(), symbol: form.symbol.trim(), description: form.description, image: img.uri,
+      links: { website: form.website, twitter: form.twitter, telegram: form.telegram },
+      owner: form.payout, feeBps: Math.round(Number(form.fee) * 100), mcapUsd: Number(form.mcap), openNow: form.worlds,
+    });
+    const usd = Number(q.fee.usd);
+    const feeText = `${fmt(BigInt(q.fee.wei))} ETH${usd > 0 ? ` ≈ $${usd.toFixed(2)}` : ''}`;
+    return { to: q.pay.to, data: q.pay.data, value: BigInt(q.pay.value), feeText, quote: q };
+  }
+
+  // fee mined → hand the launch to Pangea, wait for the Robinhood pool, record it, open the token page
+  async function pangeaHandOver(from, tx, payHash) {
+    const q = tx.quote;
+    setSt({ step: 'Fee paid. Handing the launch to Pangea…', hash: payHash });
+    await submitPangeaMulti(q.ticket, payHash);
+    const name = c => PANGEA_WORLDS.find(([k]) => k === c)?.[1] || c;
+    const { live } = await waitPangeaLive(q.launchId, (state, lv) => {
+      const open = Object.keys(lv);
+      setSt(s => ({ ...s, step: open.length ? `Live on ${open.map(name).join(', ')}; opening the rest…` : `Pangea is opening ${q.openNow.length} chains (${state || 'queued'})…` }));
+    });
+    const L = live.robinhood;
+    let block;
+    try { block = (await waitOn(4663, L.tx)).blockNumber; } catch {}
+    if (L.tx) await recordLaunch({ chainId: 4663, platform: 'pangea', token: L.token, deployer: from, block, txHash: L.tx });
+    location.href = `/launches/${L.token}?pf=pangea&chain=4663${block ? `&b=${block}` : ''}`;
   }
 
   // Holders: deploy the token's distributor, then route creator fees to it (same steps as ponsfamily.com)
@@ -255,7 +287,9 @@ export default function Launch() {
 
   return (
     <>
-      <PageHeader icon={IconBolt} title="Launch token" desc={isP
+      <PageHeader icon={IconBolt} title="Launch token" desc={isPM
+        ? "Create a token on Pangea v4 on several chains at once: you pay Pangea's launch fee once, on Robinhood, and Pangea opens every chain you pick within the hour (one price across chains, 1B tokens per chain). Pangea keeps 20% of the trading fee, the rest goes to your fee wallet."
+        : isP
         ? 'Create a token on Pangea v4 (Uniswap v4, ETH pair) from your own wallet: no launch fee, gas only. Pangea keeps 20% of the trading fee, the rest goes to your fee wallet.'
         : isC
         ? `Create a token on ${PL} (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.`
@@ -269,6 +303,24 @@ export default function Launch() {
           ? <div className="seg">{CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setNet(id)} disabled={!!st.step}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
           : <ChainBadge id={4663} />}
       </div>
+      {isP && (
+        <div className="card lf" style={{ marginBottom: 16 }}>
+          <div className="seg">
+            <button type="button" className={isPM ? 'on' : ''} onClick={() => setF(v => ({ ...v, pmode: 'multi' }))} disabled={!!st.step}>Multi-chain · pay once on Robinhood</button>
+            <button type="button" className={!isPM ? 'on' : ''} onClick={() => setF(v => ({ ...v, pmode: 'self' }))} disabled={!!st.step}>Robinhood only · self-launch, no fee</button>
+          </div>
+          {isPM && <>
+            <div className="seg" style={{ flexWrap: 'wrap' }}>
+              {PANGEA_WORLDS.map(([k, n]) => {
+                const on = f.worlds.includes(k);
+                return <button key={k} type="button" className={on ? 'on' : ''} disabled={k === 'robinhood' || !!st.step} title={k === 'robinhood' ? 'Home chain: always opened' : ''}
+                  onClick={() => setF(v => ({ ...v, worlds: on ? v.worlds.filter(x => x !== k) : [...v.worlds, k] }))}>{on ? '✓ ' : ''}{n}</button>;
+              })}
+            </div>
+            <p className="muted small">Robinhood is the home chain. Every chain is listed on the coin (Solana included); the ones you leave out can be opened later on Pangea at the opener's price. The fee is quoted by Pangea when you press Launch and shown in MetaMask; it is refunded if no chain opens.</p>
+          </>}
+        </div>
+      )}
       <form className="launch" onSubmit={launch}>
         <div className="card lf">
           <h3 className="sec"><IconLayers />Token details</h3>
@@ -341,10 +393,10 @@ export default function Launch() {
           )}
 
           <div className="sum">
-            <div><span className="lbl"><IconSpark />{!pons ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconSpark />{!pons ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{isPM ? 'quoted at launch' : info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
             <div><span className="lbl"><IconCart />First buy</span><b>{fmt(quoteIn)} ETH</b></div>
             {CHECKFEE_FEE_ON && <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>}
-            <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{isPM ? `Pangea fee${CHECKFEE_FEE_ON && !free ? ` + ${formatEther(CHECKFEE_LAUNCH_FEE)} ETH` : ''}` : total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg={!pons ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
