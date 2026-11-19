@@ -10,7 +10,10 @@ import { launchCredits, markFeePaid, clearFeePaid } from '../../lib/credit';
 import { recordLaunch, approveData } from '../../lib/market';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
-import { ChainIcon, ChainBadge } from '../icons';
+import { ChainIcon, ChainBadge, chainName } from '../icons';
+import { SOL, launchPangeaSolana } from '../../lib/pangea-sol';
+const SOL_ID = SOL.pcid; // Pangea's Solana pcid, used as the network id on this page
+const PANGEA_NETS = [4663, 8453, 1, 56, SOL_ID];
 import { distributorOf, createDistributorTx, routeToTx, MAX_EXEMPT } from '../../lib/launch';
 import { readPangeaInfo, buildPangeaTx, parsePangeaLaunch, PANGEA_START_MCAP_USD, PANGEA_CHAIN_IDS } from '../../lib/pangea';
 
@@ -44,7 +47,8 @@ export default function Launch() {
   const [net, setNet] = useState(4663);
   const [pnet, setPnet] = useState(4663); // Pangea home chain
   const chainId = isC ? net : isP ? pnet : 4663; // Pons is Robinhood only
-  const sym = CHAINS[chainId]?.sym || 'ETH';
+  const isPS = isP && chainId === SOL_ID; // Pangea on Solana: USDC pair, Solana wallet
+  const sym = isPS ? 'SOL' : CHAINS[chainId]?.sym || 'ETH';
   // Pangea: which chains currently accept a self-launch (opensPaused read on each chain)
   const [popen, setPopen] = useState({});
   useEffect(() => {
@@ -79,7 +83,7 @@ export default function Launch() {
         if (d.f) setF(v => ({ ...v, ...d.f, payout: '' }));
         if (d.pf) setPf(d.pf);
         if (CHAINS[d.net]) setNet(d.net);
-        if (PANGEA_CHAIN_IDS.includes(d.pnet)) setPnet(d.pnet);
+        if (PANGEA_NETS.includes(d.pnet)) setPnet(d.pnet);
         if (d.uri) setImg({ file: null, preview: d.uri.startsWith('ipfs://') ? `/api/ipfs/${d.uri.replace('ipfs://', '')}` : d.uri, uri: d.uri, uploading: false });
       }
     } catch {}
@@ -93,7 +97,7 @@ export default function Launch() {
   const [credits, setCredits] = useState(null); // null = loading
   useEffect(() => {
     setInfo(null);
-    (isC ? readTaxInfo(pf, chainId) : isP ? readPangeaInfo(chainId) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
+    (isC ? readTaxInfo(pf, chainId) : isPS ? Promise.resolve({ launchFee: 0n, canLaunch: true }) : isP ? readPangeaInfo(chainId) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
   }, [w.account, pf, chainId]);
   useEffect(() => {
     if (!CHECKFEE_FEE_ON) return setCredits(Infinity); // service fee off: every launch is free
@@ -143,14 +147,15 @@ export default function Launch() {
   const wlParsed = parseAddresses(wl);
   const wlOk = !pons || (!wlParsed.bad.length && wlParsed.list.length <= MAX_EXEMPT);
   // empty fee wallet = the connected wallet
-  const payoutOk = holders || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
+  const payoutOk = holders || isPS || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
   const lim = LIMIT[pf];
   const lenOk = f.name.trim().length <= lim.name && f.symbol.length <= lim.symbol;
   const feeOk = !(!pons && Number(f.fee) < 1) && !(isP && !(Number(f.mcap) > 0));
-  const ready = w.account && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && wlOk && info?.canLaunch && credits != null && !st.step;
+  const ready = (w.account || isPS) && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && wlOk && info?.canLaunch && credits != null && !st.step;
 
   async function launch(e) {
     e.preventDefault();
+    if (isPS) return launchSolana();
     setSt({ step: 'Simulating transaction…' });
     try {
       const eth = window.ethereum;
@@ -206,6 +211,23 @@ export default function Launch() {
     }
   }
 
+  // Pangea on Solana: the user's Solana wallet opens it (creator from the start), 2 transactions
+  async function launchSolana() {
+    setSt({ step: 'Saving the token metadata…' });
+    try {
+      const uri = await pinContractMeta(contractMeta(f, img.uri));
+      const evm = await window.ethereum?.request({ method: 'eth_accounts' }).then(a => a?.[0]).catch(() => null);
+      const res = await launchPangeaSolana({
+        name: f.name.trim(), symbol: f.symbol.trim(), uri, mcapUsd: Number(f.mcap), feeBps: Math.round(Number(f.fee) * 100),
+        creatorEvm: evm && isAddress(evm) ? getAddress(evm) : null, onStep: step => setSt(s => ({ ...s, step })),
+      });
+      try { localStorage.removeItem(DRAFT); } catch {}
+      setSt({ step: '', sol: res });
+    } catch (er) {
+      setSt(s => ({ ...s, step: '', err: er.code === 4001 || /reject|denied|cancel/i.test(er.message || '') ? 'Cancelled in the wallet' : (er.shortMessage || er.message || String(er)) }));
+    }
+  }
+
   // Pangea: start market cap in USD → the chain's native coin (ETH, BNB), then grind the 6ea salt + simulate
   async function pangeaTx(from, form, metadataURI) {
     const usd = await getNativeUsd(chainId);
@@ -234,6 +256,33 @@ export default function Launch() {
       return `Token launched, but fees were not handed to holders yet (${er.code === 4001 ? 'cancelled' : er.shortMessage || er.message}). Until then they go to your wallet; you can finish on ponsfamily.com from the token page.`;
     }
     return '';
+  }
+
+  if (st.sol) {
+    const r = st.sol;
+    return (
+      <>
+        <PageHeader icon={IconBolt} title="Launch successful" desc="Your token is live on Pangea, on Solana (USDC pair). Your Solana wallet is the coin's creator and receives the creator fees." />
+        <div className="card token">
+          <div className="tk-head">
+            <div className="tk-name">
+              <b>{f.name}</b> <span className="muted">${f.symbol}</span> <ChainBadge id={SOL_ID} />
+              <div className="tk-links">
+                <span className="mono">{r.mint}</span>
+                <a className="pill" href={`https://www.pangea.trade/app/t/${r.mint}`} target="_blank" rel="noreferrer">Pangea <IconExternal /></a>
+                <a className="pill" href={`https://solscan.io/token/${r.mint}`} target="_blank" rel="noreferrer">Solscan <IconExternal /></a>
+                <a className="pill" href={`https://solscan.io/tx/${r.signature}`} target="_blank" rel="noreferrer">Tx <IconExternal /></a>
+              </div>
+            </div>
+          </div>
+          <div className="kv">
+            <span>Creator (Solana)</span><span className="mono">{r.wallet}</span>
+            <span>EVM address (when opened later)</span><span className="mono">{r.evmToken}</span>
+          </div>
+        </div>
+        <p className="hint"><a href="/launch" onClick={() => location.reload()}>← Launch another token</a></p>
+      </>
+    );
   }
 
   if (st.token) {
@@ -265,7 +314,8 @@ export default function Launch() {
   return (
     <>
       <PageHeader icon={IconBolt} title="Launch token" desc={isP
-        ? `Create a token on Pangea v4 (Uniswap v4, ${sym} pair) on ${CHAINS[chainId].name} from your own wallet: no launch fee, gas only (paid in ${sym}). Pangea keeps 20% of the trading fee, the rest goes to your fee wallet. One chain per launch.`
+        ? isPS ? 'Create a token on Pangea v4 on Solana (Meteora pool, USDC pair) from your own Solana wallet (MetaMask Solana or Phantom): no launch fee, about 0.05 SOL of rent and fees, 2 signatures. Your Solana wallet is the creator and gets the creator fees; the other chains stay listed and can be opened later on Pangea.'
+        : `Create a token on Pangea v4 (Uniswap v4, ${sym} pair) on ${CHAINS[chainId].name} from your own wallet: no launch fee, gas only (paid in ${sym}). Pangea keeps 20% of the trading fee, the rest goes to your fee wallet. One chain per launch.`
         : isC
         ? `Create a token on ${PL} (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.`
         : 'Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost.'} />
@@ -276,7 +326,7 @@ export default function Launch() {
         <span className="muted small">Network</span>
         {isC
           ? <div className="seg">{CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setNet(id)} disabled={!!st.step}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
-          : isP ? <div className="seg">{PANGEA_CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setPnet(id)} disabled={!!st.step || popen[id] === false} title={popen[id] === false ? 'Pangea launches are closed on this chain right now' : ''}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
+          : isP ? <div className="seg">{PANGEA_NETS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setPnet(id)} disabled={!!st.step || popen[id] === false} title={popen[id] === false ? 'Pangea launches are closed on this chain right now' : ''}><ChainIcon id={id} className="chain-ic" />{chainName(id)}</button>)}</div>
           : <ChainBadge id={4663} />}
       </div>
       <form className="launch" onSubmit={launch}>
@@ -326,7 +376,8 @@ export default function Launch() {
               ))}
             </fieldset>
           )}
-          {!holders && <>
+          {isPS && <p className="muted small">Creator fees (in USDC) go to the Solana wallet that launches.</p>}
+          {!holders && !isPS && <>
             <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder={w.account ? `Connected wallet (${short(w.account)})` : 'Connected wallet'} /></label>
             <p className="muted small">{!pons ? `Receives the creator share of the trading fee (in ${sym}), claimable on the token page.` : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Leave empty to use the connected wallet; paste an address only to send fees elsewhere.</p>
           </>}
@@ -339,7 +390,7 @@ export default function Launch() {
             </label>
           )}
           {isP && <label><L icon={IconCoin}>Start market cap (USD)</L><input type="number" min="1" step="100" value={f.mcap} onChange={set('mcap')} />
-            <small className="muted">Opening price of the pool. Pangea's default is ${PANGEA_START_MCAP_USD.toLocaleString('en-US')}.</small></label>}
+            <small className="muted">{isPS ? 'Opening price of the USDC pool. ' : 'Opening price of the pool. '}Pangea's default is ${PANGEA_START_MCAP_USD.toLocaleString('en-US')}.</small></label>}
           {!isP && <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>}
           {pons && Number(f.buy) > 0 && (
             <label className="check"><input type="checkbox" checked={!!f.autoApprove} onChange={set('autoApprove')} />
@@ -357,9 +408,9 @@ export default function Launch() {
             <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ${sym}` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg={!pons ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
-          {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
-          <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || 'Launch with MetaMask'}</button>
-          {st.hash && <a className="mono small" href={`${CHAINS[chainId].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
+          {!w.account && !isPS && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
+          <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || (isPS ? 'Launch on Solana' : 'Launch with MetaMask')}</button>
+          {st.hash && CHAINS[chainId] && <a className="mono small" href={`${CHAINS[chainId].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
           {!lenOk && <ErrorLine msg={`${PLATFORMS[pf]} allows a name up to ${lim.name} and a ticker up to ${lim.symbol} characters.`} />}
           {st.err && <ErrorLine msg={st.err} />}
           {st.link && <a className="pill" href={st.link}>Open the token page</a>}

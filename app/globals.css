@@ -352,6 +352,7 @@ a.lp-row:hover { background: var(--panel); color: inherit; }
 .chain-badge.base { color: #6f97ff; border-color: rgba(47, 107, 255, .45); }
 .chain-badge.rh { color: var(--accent); border-color: rgba(200, 245, 63, .4); }
 .chain-badge.eth { color: #8fa2f5; border-color: rgba(98, 126, 234, .45); }
+.chain-badge.sol { color: #14f195; border-color: rgba(20, 241, 149, .4); }
 .chain-badge.bnb { color: #f0b90b; border-color: rgba(240, 185, 11, .45); }
 .seg button .chain-ic { vertical-align: -3px; margin-right: 6px; }
 .net-row { display: flex; align-items: center; gap: 10px; margin: -6px 0 16px; }

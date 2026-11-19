@@ -71,6 +71,7 @@ export const IconInfo = I(<><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12
 // Network badges (simple original marks, not the official logos): Base = blue, Robinhood Chain = lime
 const ICON2 = { // Ethereum, BNB Chain
   1: { name: 'Ethereum', bg: '#627eea', path: <path d="M12 3.5 7.2 12 12 14.8 16.8 12zM7.2 13 12 20.5 16.8 13 12 15.8z" fill="#fff" /> },
+  1399811149: { name: 'Solana', bg: '#111', path: <path d="M7 7.5h9.5l-1.8 1.8H5.2zm0 7.2h9.5l-1.8 1.8H5.2zm11-3.6H8.5l-1.8-1.8h9.5z" fill="#14f195" /> },
   56: { name: 'BNB Chain', bg: '#f0b90b', path: <path d="m12 5 2 2-2 2-2-2zM8 9l2 2-2 2-2-2zm8 0 2 2-2 2-2-2zm-4 0 2 2-2 2-2-2zm0 6 2 2-2 2-2-2z" fill="#fff" /> },
 };
 export const chainName = id => ICON2[Number(id)]?.name || (Number(id) === 8453 ? 'Base' : 'Robinhood');
@@ -88,5 +89,5 @@ export function ChainIcon({ id, size = 16, ...p }) {
   );
 }
 export const ChainBadge = ({ id, label = true }) => (
-  <span className={`chain-badge ${({ 8453: 'base', 1: 'eth', 56: 'bnb' })[Number(id)] || 'rh'}`}><ChainIcon id={id} size={14} />{label && chainName(id)}</span>
+  <span className={`chain-badge ${({ 8453: 'base', 1: 'eth', 56: 'bnb', 1399811149: 'sol' })[Number(id)] || 'rh'}`}><ChainIcon id={id} size={14} />{label && chainName(id)}</span>
 );
