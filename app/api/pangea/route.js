@@ -71,7 +71,12 @@ async function quote(b) {
     name, symbol, description: str(b.description, 500), image,
     website: str(links.website, 200), twitter: str(links.twitter, 200), telegram: str(links.telegram, 200),
   });
-  if (!meta.ok || typeof meta.json.metadataURI !== 'string') return fail(`Pangea could not store the metadata: ${meta.json.error || `HTTP ${meta.status}`}`, 502);
+  if (!meta.ok || typeof meta.json.metadataURI !== 'string') {
+    // Pangea's /api/metadata only serves its own site, and prepare only takes metadata pinned on Pangea's IPFS (doc_not_pinned):
+    // a multi-chain launch from CheckFee needs Pangea to allow it (partner key in PANGEA_KEY or an allowlist on their side)
+    const why = meta.json.error || `HTTP ${meta.status}`;
+    return fail(`Pangea only stores coin metadata for launches made on pangea.trade (${why}), so CheckFee cannot start a multi-chain launch yet. Nothing was paid. Use "Robinhood only", or launch multi-chain directly on pangea.trade.`, 502, { code: 'pangea_metadata_blocked' });
+  }
 
   let legs;
   try {

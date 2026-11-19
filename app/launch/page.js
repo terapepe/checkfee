@@ -29,7 +29,7 @@ const DESTS = [
   ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
 ];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD, pmode: 'multi', worlds: ['robinhood', 'base', 'ethereum', 'bsc'] };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD, pmode: 'self', worlds: ['robinhood', 'base', 'ethereum', 'bsc'] };
 
 export default function Launch() {
   const w = useWallet();
@@ -306,7 +306,7 @@ export default function Launch() {
       {isP && (
         <div className="card lf" style={{ marginBottom: 16 }}>
           <div className="seg">
-            <button type="button" className={isPM ? 'on' : ''} onClick={() => setF(v => ({ ...v, pmode: 'multi' }))} disabled={!!st.step}>Multi-chain · pay once on Robinhood</button>
+            <button type="button" className={isPM ? 'on' : ''} onClick={() => setF(v => ({ ...v, pmode: 'multi' }))} disabled={!!st.step}>Multi-chain · pay once on Robinhood (needs Pangea partner access)</button>
             <button type="button" className={!isPM ? 'on' : ''} onClick={() => setF(v => ({ ...v, pmode: 'self' }))} disabled={!!st.step}>Robinhood only · self-launch, no fee</button>
           </div>
           {isPM && <>
