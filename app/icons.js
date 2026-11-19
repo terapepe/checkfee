@@ -69,7 +69,14 @@ export const IconLayers = I(<><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 
 export const IconInfo = I(<><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>, { width: 16, height: 16 });
 
 // Network badges (simple original marks, not the official logos): Base = blue, Robinhood Chain = lime
+const ICON2 = { // Ethereum, BNB Chain
+  1: { name: 'Ethereum', bg: '#627eea', path: <path d="M12 3.5 7.2 12 12 14.8 16.8 12zM7.2 13 12 20.5 16.8 13 12 15.8z" fill="#fff" /> },
+  56: { name: 'BNB Chain', bg: '#f0b90b', path: <path d="m12 5 2 2-2 2-2-2zM8 9l2 2-2 2-2-2zm8 0 2 2-2 2-2-2zm-4 0 2 2-2 2-2-2zm0 6 2 2-2 2-2-2z" fill="#fff" /> },
+};
+export const chainName = id => ICON2[Number(id)]?.name || (Number(id) === 8453 ? 'Base' : 'Robinhood');
 export function ChainIcon({ id, size = 16, ...p }) {
+  const o = ICON2[Number(id)];
+  if (o) return <svg width={size} height={size} viewBox="0 0 24 24" aria-label={o.name} role="img" {...p}><circle cx="12" cy="12" r="11" fill={o.bg} />{o.path}</svg>;
   const base = Number(id) === 8453;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-label={base ? 'Base' : 'Robinhood Chain'} role="img" {...p}>
@@ -81,5 +88,5 @@ export function ChainIcon({ id, size = 16, ...p }) {
   );
 }
 export const ChainBadge = ({ id, label = true }) => (
-  <span className={`chain-badge ${Number(id) === 8453 ? 'base' : 'rh'}`}><ChainIcon id={id} size={14} />{label && (Number(id) === 8453 ? 'Base' : 'Robinhood')}</span>
+  <span className={`chain-badge ${({ 8453: 'base', 1: 'eth', 56: 'bnb' })[Number(id)] || 'rh'}`}><ChainIcon id={id} size={14} />{label && chainName(id)}</span>
 );

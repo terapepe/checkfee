@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { parseEther, formatEther, isAddress, getAddress } from 'viem';
-import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt, parseAddresses, getEthUsd } from '../ui';
+import { useWallet, PageHeader, ErrorLine, EXPLORER, PONS, short, fmt, parseAddresses, getNativeUsd } from '../ui';
 import { IconBolt, IconExternal, TokenAvatar, IconImage, IconTag, IconHash, IconText, IconAt, IconSend, IconGlobe, IconChat, IconArch, IconWallet, IconPercent, IconRecycle, IconCart, IconReceipt, IconLayers, IconCoin, IconSpark } from '../icons';
 
 const L = ({ icon: Ic, children }) => <span className="lbl"><Ic />{children}</span>;
@@ -12,7 +12,7 @@ import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContract
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge } from '../icons';
 import { distributorOf, createDistributorTx, routeToTx, MAX_EXEMPT } from '../../lib/launch';
-import { readPangeaInfo, buildPangeaTx, parsePangeaLaunch, PANGEA_START_MCAP_USD } from '../../lib/pangea';
+import { readPangeaInfo, buildPangeaTx, parsePangeaLaunch, PANGEA_START_MCAP_USD, PANGEA_CHAIN_IDS } from '../../lib/pangea';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1', pangea: 'Pangea' };
 const DRAFT = 'checkfee_launch_draft';
@@ -38,11 +38,19 @@ export default function Launch() {
   const [info, setInfo] = useState(null);
   const [pf, setPf] = useState('pons');
   const isC = !!TAX[pf]; // Clanker / o1: same v4 tax launch
-  const isP = pf === 'pangea'; // Pangea v4: Robinhood only, no first buy
+  const isP = pf === 'pangea'; // Pangea v4: one chain per launch (Robinhood, Base, Ethereum, BNB Chain), no first buy
   const pons = pf === 'pons';
   const PL = PLATFORMS[pf];
   const [net, setNet] = useState(4663);
-  const chainId = isC ? net : 4663; // Pons is Robinhood only
+  const [pnet, setPnet] = useState(4663); // Pangea home chain
+  const chainId = isC ? net : isP ? pnet : 4663; // Pons is Robinhood only
+  const sym = CHAINS[chainId]?.sym || 'ETH';
+  // Pangea: which chains currently accept a self-launch (opensPaused read on each chain)
+  const [popen, setPopen] = useState({});
+  useEffect(() => {
+    if (!isP) return;
+    PANGEA_CHAIN_IDS.forEach(id => readPangeaInfo(id).then(i => setPopen(o => ({ ...o, [id]: i.canLaunch }))).catch(() => setPopen(o => ({ ...o, [id]: false }))));
+  }, [isP]);
   const [st, setSt] = useState({ step: '', err: '', hash: '', token: '' });
   const [scan, setScan] = useState({ busy: false, msg: '' });
   // auto-fill from the project website: only fills empty fields
@@ -71,6 +79,7 @@ export default function Launch() {
         if (d.f) setF(v => ({ ...v, ...d.f, payout: '' }));
         if (d.pf) setPf(d.pf);
         if (CHAINS[d.net]) setNet(d.net);
+        if (PANGEA_CHAIN_IDS.includes(d.pnet)) setPnet(d.pnet);
         if (d.uri) setImg({ file: null, preview: d.uri.startsWith('ipfs://') ? `/api/ipfs/${d.uri.replace('ipfs://', '')}` : d.uri, uri: d.uri, uploading: false });
       }
     } catch {}
@@ -78,13 +87,13 @@ export default function Launch() {
   }, []);
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem(DRAFT, JSON.stringify({ f: { ...f, payout: '' }, pf, net, uri: img.uri })); } catch {}
-  }, [f, pf, net, img.uri, loaded]);
+    try { localStorage.setItem(DRAFT, JSON.stringify({ f: { ...f, payout: '' }, pf, net, pnet, uri: img.uri })); } catch {}
+  }, [f, pf, net, pnet, img.uri, loaded]);
 
   const [credits, setCredits] = useState(null); // null = loading
   useEffect(() => {
     setInfo(null);
-    (isC ? readTaxInfo(pf, chainId) : isP ? readPangeaInfo() : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
+    (isC ? readTaxInfo(pf, chainId) : isP ? readPangeaInfo(chainId) : readLaunchInfo(w.account)).then(setInfo).catch(() => {});
   }, [w.account, pf, chainId]);
   useEffect(() => {
     if (!CHECKFEE_FEE_ON) return setCredits(Infinity); // service fee off: every launch is free
@@ -197,12 +206,12 @@ export default function Launch() {
     }
   }
 
-  // Pangea: start market cap in USD → ETH, then grind the 6ea salt + simulate
+  // Pangea: start market cap in USD → the chain's native coin (ETH, BNB), then grind the 6ea salt + simulate
   async function pangeaTx(from, form, metadataURI) {
-    const ethUsd = await getEthUsd();
-    if (!ethUsd) throw new Error('ETH price unavailable, try again');
+    const usd = await getNativeUsd(chainId);
+    if (!usd) throw new Error(`${sym} price unavailable, try again`);
     setSt({ step: 'Finding a 6ea token address (~15s)…' });
-    return buildPangeaTx({ account: from, name: form.name.trim(), symbol: form.symbol.trim(), creator: form.payout, metadataURI, feeBps: Math.round(Number(form.fee) * 100), mcapEth: Number(form.mcap) / ethUsd });
+    return buildPangeaTx({ chainId, account: from, name: form.name.trim(), symbol: form.symbol.trim(), creator: form.payout, metadataURI, feeBps: Math.round(Number(form.fee) * 100), mcapEth: Number(form.mcap) / usd });
   }
 
   // Holders: deploy the token's distributor, then route creator fees to it (same steps as ponsfamily.com)
@@ -256,7 +265,7 @@ export default function Launch() {
   return (
     <>
       <PageHeader icon={IconBolt} title="Launch token" desc={isP
-        ? 'Create a token on Pangea v4 (Uniswap v4, ETH pair) from your own wallet: no launch fee, gas only. Pangea keeps 20% of the trading fee, the rest goes to your fee wallet.'
+        ? `Create a token on Pangea v4 (Uniswap v4, ${sym} pair) on ${CHAINS[chainId].name} from your own wallet: no launch fee, gas only (paid in ${sym}). Pangea keeps 20% of the trading fee, the rest goes to your fee wallet. One chain per launch.`
         : isC
         ? `Create a token on ${PL} (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.`
         : 'Create a token on Pons v2 (ETH pair). Creator fees go straight to your wallet (Pons keeps 30% of the base fee), claimable at normal cost.'} />
@@ -267,6 +276,7 @@ export default function Launch() {
         <span className="muted small">Network</span>
         {isC
           ? <div className="seg">{CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setNet(id)} disabled={!!st.step}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
+          : isP ? <div className="seg">{PANGEA_CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setPnet(id)} disabled={!!st.step || popen[id] === false} title={popen[id] === false ? 'Pangea launches are closed on this chain right now' : ''}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
           : <ChainBadge id={4663} />}
       </div>
       <form className="launch" onSubmit={launch}>
@@ -318,7 +328,7 @@ export default function Launch() {
           )}
           {!holders && <>
             <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder={w.account ? `Connected wallet (${short(w.account)})` : 'Connected wallet'} /></label>
-            <p className="muted small">{!pons ? 'Receives the creator share of the trading fee (in ETH), claimable on the token page.' : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Leave empty to use the connected wallet; paste an address only to send fees elsewhere.</p>
+            <p className="muted small">{!pons ? `Receives the creator share of the trading fee (in ${sym}), claimable on the token page.` : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Leave empty to use the connected wallet; paste an address only to send fees elsewhere.</p>
           </>}
           {pons && (
             <label><L icon={IconLayers}>Whitelisted wallets (optional, up to {MAX_EXEMPT})</L>
@@ -341,10 +351,10 @@ export default function Launch() {
           )}
 
           <div className="sum">
-            <div><span className="lbl"><IconSpark />{!pons ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconSpark />{!pons ? `${PL} token creation fee` : 'Ponsfamily token creation fee'}</span><b>{info ? `${formatEther(info.launchFee)} ${sym}` : '…'}</b></div>
             <div><span className="lbl"><IconCart />First buy</span><b>{fmt(quoteIn)} ETH</b></div>
             {CHECKFEE_FEE_ON && <div><span className="lbl"><IconReceipt />CheckFee service fee</span><b>{credits == null && w.account ? '…' : free ? <span className="ok">free{Number.isFinite(credits) ? ` (${credits} credit${credits > 1 ? 's' : ''} left)` : ''}</span> : `${formatEther(CHECKFEE_LAUNCH_FEE)} ETH`}</b></div>}
-            <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ETH` : '…'}</b></div>
+            <div><span className="lbl"><IconBolt width={15} height={15} />Total{free ? '' : ' (2 transactions)'}, excl. gas</span><b className="accent">{total != null ? `${formatEther(total)} ${sym}` : '…'}</b></div>
           </div>
           {info && !info.canLaunch && <ErrorLine msg={!pons ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
           {!w.account && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}

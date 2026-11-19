@@ -1,19 +1,19 @@
 'use client';
-// Token page for a Pangea v4 coin (Robinhood): price from the v4 pool, creator fees from the fee hook + FeeSplitterV4
+// Token page for a Pangea v4 coin on one chain (Robinhood, Base, Ethereum, BNB Chain): price from the v4 pool, creator fees from the fee hook + FeeSplitterV4
 import { useEffect, useState, useCallback } from 'react';
 import { formatUnits } from 'viem';
 import { ipfsUrl } from '../../../lib/market';
 import { CHAINS, holdersOn, switchChain, waitOn } from '../../../lib/chains';
 import { pangeaSummary, pangeaFees, pangeaPaid, pangeaClaimTx, pangeaClaimUnclaimedTx, pangeaMetaAuthority, pangeaSetMetaTx } from '../../../lib/pangea';
 import { contractMeta, pinContractMeta } from '../../../lib/tax';
-import { getEthUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
+import { getNativeUsd, short, Spinner, ErrorLine, useWallet, fmt, fmtUsd, toEth, SwitchToWallet } from '../../ui';
 import { usdC, priceUsd, compact, Logo } from '../../charts';
 import { IconExternal, ChainBadge, IconRefresh } from '../../icons';
 
-const CHAIN = 4663;
-const EXPLORER = CHAINS[CHAIN].explorer;
-
-export default function PangeaTokenPage({ token }) {
+export default function PangeaTokenPage({ token, chainId = 4663 }) {
+  const CHAIN = Number(chainId);
+  const EXPLORER = CHAINS[CHAIN].explorer;
+  const SYM = CHAINS[CHAIN].sym;
   const w = useWallet();
   const [s, setS] = useState(null);
   const [holders, setHolders] = useState(null);
@@ -22,11 +22,11 @@ export default function PangeaTokenPage({ token }) {
   const [rk, setRk] = useState(0);
   const load = useCallback(async () => {
     try {
-      holdersOn(CHAIN, token).then(setHolders).catch(() => {});
-      const [sum, px] = await Promise.all([pangeaSummary(token), getEthUsd()]);
+      holdersOn(CHAIN, token).then(setHolders).catch(() => setHolders(null));
+      const [sum, px] = await Promise.all([pangeaSummary(token, CHAIN), getNativeUsd(CHAIN)]);
       setS({ ...sum, logo: ipfsUrl(sum.image) }); setEthUsd(px); setRk(k => k + 1);
     } catch (e) { setErr(e.shortMessage || e.message); }
-  }, [token]);
+  }, [token, CHAIN]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (s?.name) document.title = `${s.name} ($${s.symbol}) · CheckFee v1`; }, [s?.name, s?.symbol]);
 
@@ -45,7 +45,7 @@ export default function PangeaTokenPage({ token }) {
           <h1>{s.name} <span className="muted">{s.symbol}</span> <em className="tag">Pangea</em><ChainBadge id={CHAIN} /></h1>
           <div className="muted small tp-sub">
             <span>by <a className="mono" href={`${EXPLORER}/address/${s.launcher}`} target="_blank" rel="noreferrer">{short(s.launcher)}</a></span>
-            <span>· ETH pair</span><span className="mono">· {short(s.token)}</span>
+            <span>· {SYM} pair</span><span className="mono">· {short(s.token)}</span>
             <button type="button" className="pill pill-btn" onClick={load}><IconRefresh />Refresh</button>
             <a className="pill" href={`https://www.pangea.trade/app/t/${s.token}`} target="_blank" rel="noreferrer">Pangea <IconExternal /></a>
             {links.map(([k, u]) => <a key={k} className="pill" href={u} target="_blank" rel="noreferrer">{k} <IconExternal /></a>)}
@@ -60,7 +60,7 @@ export default function PangeaTokenPage({ token }) {
       <div className="tp-grid">
         <div>
           <div className="tp-stats">
-            <div><span>Holders</span><b>{holders ? holders.count.toLocaleString('en-US') : '…'}</b></div>
+            <div><span>Holders</span><b>{holders ? holders.count.toLocaleString('en-US') : holders === null ? '—' : '…'}</b></div>
             <div><span>Supply</span><b>{compact(supplyN)}</b></div>
             <div><span>Fee</span><b>{s.feeBps / 100}% buy &amp; sell</b></div>
             <div><span>Pool</span><b>Uniswap v4</b></div>
@@ -78,13 +78,15 @@ export default function PangeaTokenPage({ token }) {
 
 // Fees wait in the hook → splitter; the claim tx (anyone can send it) pays the creator 80%, Pangea 20%
 function PangeaFeeBox({ s, account, connect, ethUsd }) {
+  const CHAIN = s.chainId, EXPLORER = CHAINS[CHAIN].explorer, SYM = CHAINS[CHAIN].sym;
+  const fromBlock = (() => { try { return new URLSearchParams(location.search).get('b'); } catch { return null; } })();
   const [f, setF] = useState(null);
   const [err, setErr] = useState('');
   const [st, setSt] = useState({ busy: '', hash: '' });
   const [paid, setPaid] = useState(null);
   const load = useCallback(() => {
-    setErr(''); pangeaFees(s.token, s.splitter, s.creator).then(setF).catch(e => setErr(e.shortMessage || e.message));
-    pangeaPaid(s.splitter).then(setPaid).catch(() => {});
+    setErr(''); pangeaFees(s.token, s.splitter, s.creator, CHAIN).then(setF).catch(e => setErr(e.shortMessage || e.message));
+    pangeaPaid(s.splitter, CHAIN, /^\d+$/.test(fromBlock || '') ? fromBlock : null).then(v => setPaid(v === null ? undefined : v)).catch(() => setPaid(undefined));
   }, [s]);
   useEffect(() => { load(); }, [load]);
 
@@ -119,12 +121,12 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
   return (
     <div className="card feebox">
       <span className="muted small">Claimable creator fees</span>
-      <b className="fb-amt">{fmt(amt)} ETH</b>
+      <b className="fb-amt">{fmt(amt)} {SYM}</b>
       <span className="muted small">{ethUsd ? fmtUsd(toEth(amt) * ethUsd) : '—'}</span>
       <small className="muted">Pangea keeps 20% of the trading fee; the claim sends the rest straight to the {s.toVault ? 'holder-rewards vault' : 'creator wallet'}.</small>
       <div className="fb-row">
         <span className="muted small">Already paid out</span>
-        <b className="small">{paid == null ? '…' : `${fmt(paid)} ETH`}{paid && ethUsd ? ` · ${fmtUsd(toEth(paid) * ethUsd)}` : ''}</b>
+        <b className="small">{paid === undefined ? '—' : paid == null ? '…' : `${fmt(paid)} ${SYM}`}{paid && ethUsd ? ` · ${fmtUsd(toEth(paid) * ethUsd)}` : ''}</b>
       </div>
       <div className="fb-row">
         <span className="muted small">{s.toVault ? 'Fees go to' : 'Creator wallet'}</span>
@@ -144,9 +146,10 @@ function PangeaFeeBox({ s, account, connect, ethUsd }) {
 
 // Links saved under "links" only (older CheckFee launches): Pangea doesn't show them. The metadata authority re-publishes them.
 function MetaFix({ s, account, onDone }) {
+  const CHAIN = s.chainId;
   const [auth, setAuth] = useState(null);
   const [st, setSt] = useState({ busy: '', err: '' });
-  useEffect(() => { pangeaMetaAuthority(s.token).then(setAuth).catch(() => {}); }, [s.token]);
+  useEffect(() => { pangeaMetaAuthority(s.token, CHAIN).then(setAuth).catch(() => {}); }, [s.token, CHAIN]);
   if (!auth || !account || auth.toLowerCase() !== account.toLowerCase()) return null;
   async function run() {
     const eth = window.ethereum;
