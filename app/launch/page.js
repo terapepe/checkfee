@@ -33,7 +33,9 @@ const DESTS = [
   ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
 ];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD, pquote: 'usdc' };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD, pquote: 'usdc', pbuy: '' };
+// Pangea opening buy: a USD amount → that chain's native coin (wei)
+const buyWeiOf = (usdAmt, nativeUsd) => { const x = Number(usdAmt) / Number(nativeUsd); return x > 0 && isFinite(x) ? BigInt(Math.floor(x * 1e9)) * 10n ** 9n : 0n; };
 
 export default function Launch() {
   const w = useWallet();
@@ -253,7 +255,7 @@ export default function Launch() {
       const creator = getAddress(from);
       const job = resume || {
         name: f.name.trim(), symbol: f.symbol.trim(), mcap: Number(f.mcap), feeBps: Math.round(Number(f.fee) * 100), quote: f.pquote,
-        order: porder, creator, at: Date.now(), image: img.uri,
+        order: porder, creator, at: Date.now(), image: img.uri, buyUsd: Number(f.pbuy) || 0,
       };
       if (job.creator !== creator) throw new Error(`Connect ${short(job.creator)}, the wallet that started this launch`);
       if (!job.uri) { setSt({ step: 'Saving the token metadata…' }); job.uri = await pinContractMeta(contractMeta(f, img.uri)); }
@@ -286,8 +288,9 @@ export default function Launch() {
           const usd = await getNativeUsd(id);
           if (!usd) throw new Error(`${CHAINS[id].sym} price unavailable, try again`);
           setSt(s => ({ ...s, step: `${label}: simulating…` }));
-          const tx = await buildPangeaOpenTx({ chainId: id, account: creator, pre, name: job.name, symbol: job.symbol, metadataURI: job.uri, feeBps: job.feeBps, mcapEth: job.mcap / usd });
-          setSt(s => ({ ...s, step: `${label}: confirm in MetaMask (gas in ${CHAINS[id].sym})…` }));
+          const buyWei = buyWeiOf(job.buyUsd, usd);
+          const tx = await buildPangeaOpenTx({ chainId: id, account: creator, pre, name: job.name, symbol: job.symbol, metadataURI: job.uri, feeBps: job.feeBps, mcapEth: job.mcap / usd, buyWei });
+          setSt(s => ({ ...s, step: `${label}: confirm in MetaMask (gas${buyWei > 0n ? ` + ${fmt(buyWei)} ${CHAINS[id].sym} opening buy` : ''})…` }));
           const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
           setSt(s => ({ ...s, step: `${label}: waiting for confirmation…` }));
           const rc = await waitOn(id, hash);
@@ -319,7 +322,7 @@ export default function Launch() {
     const usd = await getNativeUsd(chainId);
     if (!usd) throw new Error(`${sym} price unavailable, try again`);
     setSt({ step: 'Finding a 6ea token address (~15s)…' });
-    return buildPangeaTx({ chainId, account: from, name: form.name.trim(), symbol: form.symbol.trim(), creator: form.payout, metadataURI, feeBps: Math.round(Number(form.fee) * 100), mcapEth: Number(form.mcap) / usd });
+    return buildPangeaTx({ chainId, account: from, name: form.name.trim(), symbol: form.symbol.trim(), creator: form.payout, metadataURI, feeBps: Math.round(Number(form.fee) * 100), mcapEth: Number(form.mcap) / usd, buyWei: buyWeiOf(form.pbuy, usd) });
   }
 
   // Holders: deploy the token's distributor, then route creator fees to it (same steps as ponsfamily.com)
@@ -506,6 +509,8 @@ export default function Launch() {
           )}
           {isP && <label><L icon={IconCoin}>Start market cap (USD)</L><input type="number" min="1" step="100" value={f.mcap} onChange={set('mcap')} />
             <small className="muted">{isPS ? 'Opening price of the USDC pool. ' : 'Opening price of the pool. '}Pangea's default is ${PANGEA_START_MCAP_USD.toLocaleString('en-US')}.</small></label>}
+          {isP && !isPS && <label><L icon={IconCart}>Opening buy (USD, optional{isPM ? ', on each EVM chain' : ''})</L><input type="number" min="0" step="1" value={f.pbuy} onChange={set('pbuy')} placeholder="0" />
+            <small className="muted">Bought from your wallet in the same transaction as the open, at the opening price ({isPM ? 'paid in each chain\'s native coin' : `paid in ${sym}`}); the tokens go to your wallet. Not on Solana.</small></label>}
           {!isP && <label><L icon={IconCart}>Buy at launch (ETH, optional)</L><input type="number" min="0" step="0.001" value={f.buy} onChange={set('buy')} placeholder="0" /></label>}
           {pons && Number(f.buy) > 0 && (
             <label className="check"><input type="checkbox" checked={!!f.autoApprove} onChange={set('autoApprove')} />
