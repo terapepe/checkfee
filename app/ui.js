@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { formatUnits, zeroAddress, isAddress } from 'viem';
 import { checkWallet, checkTokens } from '../lib/pons';
 import { checkTaxWallet, checkTaxTokens } from '../lib/tax-check';
+import { checkClassicWallet } from '../lib/clanker-classic';
 import {
   Logo, IconWallet, IconWallets, IconCoin, IconSpark, IconExternal, IconCopy, IconCheck,
   IconAlert, IconRefresh, IconBolt, IconPower, TokenAvatar, IconInfo,
@@ -497,6 +498,12 @@ export function fetchTokens(cas) {
 export function fetchTaxWallet(pf, wallet, chainId = 4663) {
   if (!isAddress(wallet, { strict: false })) return Promise.reject(new Error('Invalid wallet address'));
   return withRetry(() => checkTaxWallet(pf, wallet, chainId));
+}
+
+// Clanker v0–v4 on Base
+export function fetchClassicWallet(wallet) {
+  if (!isAddress(wallet, { strict: false })) return Promise.reject(new Error('Invalid wallet address'));
+  return withRetry(() => checkClassicWallet(wallet));
 }
 
 export function fetchTaxTokens(pf, cas, chainId = 4663) {

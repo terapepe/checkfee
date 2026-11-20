@@ -1,21 +1,22 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  WalletResult, fetchWallet, fetchTaxWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
+  WalletResult, fetchWallet, fetchTaxWallet, fetchClassicWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
   walletEthTotals, fmt, fmtUsd, toEth, short,
 } from '../ui';
 import { CHAINS, CHAIN_IDS } from '../../lib/chains';
 import { IconWallets, IconRefresh } from '../icons';
-import { usePlatforms, PlatformToggle, ponsOn, taxJobs } from '../tax-ui';
+import { usePlatforms, PlatformToggle, ponsOn, taxJobs, classicOn, ClassicClaim } from '../tax-ui';
 import { CheckResult } from '../check-ui';
 
 // one wallet on the selected platforms
-const fetchBoth = (wallet, pf) => Promise.all([ponsOn(pf) ? fetchWallet(wallet) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, wallet, id))])
-  .then(([pons, ...tax]) => { tax = tax.filter(Boolean); return { pons, tax, ethUsd: pons?.ethUsd || tax[0]?.ethUsd }; });
+const fetchBoth = (wallet, pf) => Promise.all([ponsOn(pf) ? fetchWallet(wallet) : null, classicOn(pf) ? fetchClassicWallet(wallet) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, wallet, id))])
+  .then(([pons, classic, ...tax]) => { tax = tax.filter(Boolean); return { pons, classic, tax, ethUsd: pons?.ethUsd || tax[0]?.ethUsd || classic?.ethUsd }; });
 const totals = res => {
   const t = res.pons ? walletEthTotals(res.pons) : { pending: 0n, escrow: 0n };
   const owed = k => res.tax.filter(x => x.platform === k).reduce((a, x) => a + x.owed, 0n); // all networks
-  return { ...t, clanker: owed('clanker'), o1: owed('o1'), n: (res.pons?.tokens.length || 0) + res.tax.reduce((a, x) => a + x.tokens.length, 0) };
+  return { ...t, clanker: owed('clanker'), o1: owed('o1'), classic: res.classic?.owed || 0n,
+    n: (res.pons?.tokens.length || 0) + res.tax.reduce((a, x) => a + x.tokens.length, 0) + (res.classic?.tokens.length || 0) };
 };
 const has = (res, k) => res.tax.some(x => x.platform === k);
 
@@ -60,8 +61,9 @@ export default function Multi() {
 
   const done = results.filter(r => r.res);
   const ethUsd = done.find(r => r.res.ethUsd)?.res.ethUsd;
-  const sum = done.reduce((s, r) => { const t = totals(r.res); return { p: s.p + t.pending, e: s.e + t.escrow, c: s.c + t.clanker, o: s.o + t.o1, n: s.n + t.n }; }, { p: 0n, e: 0n, c: 0n, o: 0n, n: 0 });
-  const totalEth = toEth(sum.p + sum.e + sum.c + sum.o);
+  const sum = done.reduce((s, r) => { const t = totals(r.res); return { p: s.p + t.pending, e: s.e + t.escrow, c: s.c + t.clanker, k: s.k + t.classic, o: s.o + t.o1, n: s.n + t.n }; }, { p: 0n, e: 0n, c: 0n, k: 0n, o: 0n, n: 0 });
+  const totalEth = toEth(sum.p + sum.e + sum.c + sum.k + sum.o);
+  const classics = done.map(r => r.res.classic).filter(Boolean);
 
   return (
     <>
@@ -81,14 +83,15 @@ export default function Multi() {
             { label: 'Wallets', value: `${done.length}/${results.length}` },
             { label: 'Token', value: sum.n },
             { label: 'Pons (sweep + escrow)', value: `${fmt(sum.p + sum.e)} ETH` },
-            { label: 'Clanker', value: `${fmt(sum.c)} ETH` },
+            { label: 'Clanker v5', value: `${fmt(sum.c)} ETH` },
+            { label: 'Clanker v0–v4', value: `${fmt(sum.k)} ETH`, action: classics.length > 1 && !loading ? <ClassicClaim results={classics} label="Claim all wallets" onDone={() => {}} /> : null },
             { label: 'o1', value: `${fmt(sum.o)} ETH` },
             { label: 'Total claimable', value: ethUsd ? fmtUsd(totalEth * ethUsd) : '—', accent: true },
           ]} />
 
           <div className="card table-wrap">
             <table className="table">
-              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker</th><th>o1</th><th>USD</th><th /></tr></thead>
+              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker v5</th><th>Clanker v0–v4</th><th>o1</th><th>USD</th><th /></tr></thead>
               <tbody>
                 {results.map(r => {
                   const t = r.res && totals(r.res);
@@ -101,14 +104,15 @@ export default function Multi() {
                           <td>{r.res.pons ? `${fmt(t.pending)} ETH` : '—'}</td>
                           <td>{r.res.pons ? `${fmt(t.escrow)} ETH` : '—'}</td>
                           <td>{has(r.res, 'clanker') ? `${fmt(t.clanker)} ETH` : '—'}</td>
+                          <td>{r.res.classic ? `${fmt(t.classic)} ETH` : '—'}</td>
                           <td>{has(r.res, 'o1') ? `${fmt(t.o1)} ETH` : '—'}</td>
-                          <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker + t.o1) * ethUsd) : '—'}</td>
+                          <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker + t.classic + t.o1) * ethUsd) : '—'}</td>
                           <td>{nets.map(id => <a key={id} href={`${CHAINS[id].explorer}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small" style={{ marginRight: 8 }}>{nets.length > 1 ? CHAINS[id].name : 'Blockscout'}</a>)}</td>
                         </>
                       ) : r.loading ? (
-                        <td colSpan={7}><span className="loading inline"><span className="spin" />Checking…</span></td>
+                        <td colSpan={8}><span className="loading inline"><span className="spin" />Checking…</span></td>
                       ) : (
-                        <td colSpan={7}>
+                        <td colSpan={8}>
                           <span className="err">{r.err}</span>{' '}
                           <button type="button" className="btn-ghost sm" disabled={loading} onClick={() => recheck(r.wallet)}><IconRefresh />Retry</button>
                         </td>

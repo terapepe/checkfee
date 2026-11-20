@@ -5,11 +5,12 @@ import { Stats, ErrorLine, EXPLORER, short, fmt, fmtUsd, toEth, useWallet } from
 import { IconWallet, IconExternal, ChainIcon, ChainBadge } from './icons';
 import { TAX, TAX_KEYS, taxClaimTx } from '../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../lib/chains';
+import { classicOpenCalls, classicOwnerCall, batchTxs, BASE } from '../lib/clanker-classic';
 
 const KEY = 'checkfee_platforms';
-const PLATS = [['pons', 'Pons'], ['clanker', 'Clanker'], ['o1', 'o1']];
+const PLATS = [['pons', 'Pons'], ['clanker', 'Clanker v5'], ['classic', 'Clanker v0–v4'], ['o1', 'o1']];
 const NETS = CHAIN_IDS.map(id => [`n${id}`, CHAINS[id].name, id]);
-const ALL = { pons: true, clanker: true, o1: true, ...Object.fromEntries(NETS.map(([k]) => [k, true])) };
+const ALL = { pons: true, clanker: true, classic: true, o1: true, ...Object.fromEntries(NETS.map(([k]) => [k, true])) };
 
 // which platforms + networks to check; each group keeps at least one on; remembered in this browser
 export function usePlatforms() {
@@ -28,6 +29,8 @@ const fix = v => (PLATS.some(([k]) => v[k]) && NETS.some(([k]) => v[k]) ? v : AL
 
 // Pons only exists on Robinhood
 export const ponsOn = p => p.pons && p.n4663;
+// Clanker v0–v4 only exists on Base
+export const classicOn = p => p.classic && p.n8453;
 // selected [platform, chainId] pairs for Clanker / o1
 export const taxJobs = p => TAX_KEYS.filter(k => p[k]).flatMap(k => CHAIN_IDS.filter(id => p[`n${id}`]).map(id => [k, id]));
 
@@ -47,6 +50,7 @@ export function PlatformToggle({ value, onToggle, disabled }) {
         ))}
       </div>
       {value.pons && !value.n4663 && <small className="muted">Pons is on Robinhood only, so it is skipped.</small>}
+      {value.classic && !value.n8453 && <small className="muted">Clanker v0–v4 is on Base only, so it is skipped.</small>}
     </div>
   );
 }
@@ -132,6 +136,56 @@ export function TaxCAResult({ res, ethUsd, onReload }) {
           <p className="muted small">Claimable covers all of this wallet's {L} tokens.</p>
         </section>
       ))}
+    </>
+  );
+}
+
+// send txs one by one on Base through MetaMask
+async function sendAll(txs, setSt) {
+  const eth = window.ethereum;
+  const [from] = await eth.request({ method: 'eth_requestAccounts' });
+  await switchChain(eth, BASE);
+  let last = '';
+  for (let i = 0; i < txs.length; i++) {
+    setSt(s => ({ ...s, busy: `Confirm ${i + 1}/${txs.length} in MetaMask…` }));
+    last = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: txs[i].to, data: txs[i].data, value: '0x0' }] });
+    setSt(s => ({ ...s, busy: `Confirming ${i + 1}/${txs.length}…`, hash: last }));
+    const rc = await waitOn(BASE, last);
+    if (rc.status !== 'success') throw new Error(`Transaction ${i + 1} failed`);
+  }
+  return last;
+}
+const errText = e => (e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessage || e.message));
+
+// Clanker v0–v4 claim for one or many wallets. v2 / v3 / v3.1 / v4 claims can be sent by any wallet (fees still
+// go to each token's recipient), batched through Multicall3; v0 / v1 need the connected wallet to own the position.
+export function ClassicClaim({ results, onDone, label }) {
+  const w = useWallet();
+  const [st, setSt] = useState({ busy: '', err: '', hash: '' });
+  const open = classicOpenCalls(results);
+  const ownerToks = results.flatMap(r => r.tokens.filter(t => !t.error && t.hasFees && (t.type === 'proxy' || t.type === 'clanker')));
+  const mineOwner = ownerToks.filter(t => w.account && t.recipient && t.recipient.toLowerCase() === w.account.toLowerCase());
+  if (!open.length && !ownerToks.length) return <small className="muted">Nothing to claim</small>;
+  async function claim() {
+    setSt({ busy: 'Preparing…', err: '', hash: '' });
+    try {
+      const owner = [];
+      for (const t of mineOwner) owner.push(await classicOwnerCall(t, w.account).catch(() => null));
+      const txs = [...batchTxs(open), ...owner.filter(Boolean)];
+      if (!txs.length) throw new Error('Nothing this wallet can send');
+      const hash = await sendAll(txs, setSt);
+      setSt({ busy: '', err: '', hash }); onDone?.();
+    } catch (e) { setSt(s => ({ ...s, busy: '', err: errText(e) })); }
+  }
+  const n = batchTxs(open).length + mineOwner.length;
+  return (
+    <>
+      {w.account
+        ? <button type="button" className="btn-primary sm" disabled={!!st.busy || !n} onClick={claim}>{st.busy || `${label || 'Claim'}${n > 1 ? ` (${n} tx)` : ''}`}</button>
+        : <small className="muted">Connect any wallet to claim</small>}
+      {ownerToks.length > mineOwner.length && <small className="muted">{ownerToks.length - mineOwner.length} v0/v1 token(s) need their own wallet connected</small>}
+      {st.hash && !st.busy && !st.err && <a className="ok small" href={`${CHAINS[BASE].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">Claimed <IconExternal /></a>}
+      {st.err && <ErrorLine msg={st.err} />}
     </>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { fetchWallet, fetchTaxWallet, useWallet, PageHeader, ErrorLine, Spinner } from './ui';
-import { usePlatforms, PlatformToggle, ponsOn, taxJobs } from './tax-ui';
+import { fetchWallet, fetchTaxWallet, fetchClassicWallet, useWallet, PageHeader, ErrorLine, Spinner } from './ui';
+import { usePlatforms, PlatformToggle, ponsOn, taxJobs, classicOn } from './tax-ui';
 import { CheckResult } from './check-ui';
 import { IconWallet, IconSearch } from './icons';
 
@@ -17,8 +17,8 @@ export default function Home() {
     setLoading(true); setErr(''); setRes(null);
     try {
       const a = addr.trim();
-      const [pons, ...tax] = await Promise.all([ponsOn(pf) ? fetchWallet(a) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, a, id))]);
-      setRes({ pons, tax: tax.filter(Boolean), ethUsd: pons?.ethUsd || tax[0]?.ethUsd });
+      const [pons, classic, ...tax] = await Promise.all([ponsOn(pf) ? fetchWallet(a) : null, classicOn(pf) ? fetchClassicWallet(a) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, a, id))]);
+      setRes({ pons, classic, tax: tax.filter(Boolean), ethUsd: pons?.ethUsd || tax[0]?.ethUsd || classic?.ethUsd });
     } catch (e) { setErr(e.message); }
     setLoading(false);
   }
