@@ -453,17 +453,19 @@ export const Spinner = ({ text = 'Reading on-chain data…' }) => <div className
 
 /* ---------------- Data fetching (runs in the browser) ---------------- */
 // Read on-chain from the user's IP so the public RPC doesn't block the server IP; retry on rate limits.
-let ethUsdCache = null, bnbUsdCache = null;
+let ethUsdCache = null, bnbUsdCache = null, solUsdCache = null;
 export async function getEthUsd() {
   if (ethUsdCache) return ethUsdCache;
   try {
     const j = await fetch('/api/price', { cache: 'no-store' }).then(r => r.json());
     bnbUsdCache = j.bnbUsd || null;
+    solUsdCache = j.solUsd || null;
     return (ethUsdCache = j.ethUsd || null);
   } catch { return null; }
 }
-// USD price of a chain's native coin (BNB on BNB Chain, ETH elsewhere)
+// USD price of a chain's native coin (BNB on BNB Chain, SOL on Solana's pcid, ETH elsewhere)
 export async function getNativeUsd(chainId) {
+  if (Number(chainId) === 1399811149) { if (!solUsdCache) { ethUsdCache = null; await getEthUsd(); } return solUsdCache; }
   const eth = await getEthUsd();
   if (Number(chainId) !== 56) return eth;
   if (!bnbUsdCache) { ethUsdCache = null; await getEthUsd(); }

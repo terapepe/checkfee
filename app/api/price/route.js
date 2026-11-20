@@ -9,6 +9,6 @@ const spot = async pair => {
   } catch { return null; }
 };
 export async function GET() {
-  const [ethUsd, bnbUsd] = await Promise.all([spot('ETH-USD'), spot('BNB-USD')]);
-  return Response.json({ ethUsd, bnbUsd });
+  const [ethUsd, bnbUsd, solUsd] = await Promise.all([spot('ETH-USD'), spot('BNB-USD'), spot('SOL-USD')]);
+  return Response.json({ ethUsd, bnbUsd, solUsd });
 }

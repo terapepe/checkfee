@@ -12,10 +12,11 @@ import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContract
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge, chainName } from '../icons';
 import { SOL, launchPangeaSolana } from '../../lib/pangea-sol';
+const MULTI = 'checkfee_pangea_multi'; // a multi-chain launch in progress (resume within the hour)
 const SOL_ID = SOL.pcid; // Pangea's Solana pcid, used as the network id on this page
 const PANGEA_NETS = [4663, 8453, 1, 56, SOL_ID];
 import { distributorOf, createDistributorTx, routeToTx, MAX_EXEMPT } from '../../lib/launch';
-import { readPangeaInfo, buildPangeaTx, parsePangeaLaunch, PANGEA_START_MCAP_USD, PANGEA_CHAIN_IDS } from '../../lib/pangea';
+import { readPangeaInfo, buildPangeaTx, buildPangeaOpenTx, pangeaPreimage, parsePangeaLaunch, PANGEA_START_MCAP_USD, PANGEA_CHAIN_IDS } from '../../lib/pangea';
 
 const PLATFORMS = { pons: 'Pons', clanker: 'Clanker', o1: 'o1', pangea: 'Pangea' };
 const DRAFT = 'checkfee_launch_draft';
@@ -32,7 +33,7 @@ const DESTS = [
   ['holders', 'Holders', "Every creator fee is paid out to the token's holders, split by how much each holds and for how long. Two more confirmations after the launch. This is permanent: the fees can never be routed back to you."],
 ];
 
-const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD };
+const EMPTY = { name: '', symbol: '', description: '', twitter: '', telegram: '', discord: '', website: '', farcaster: '', payout: '', fee: 1, dest: 'wallet', buy: '', autoApprove: false, zeroEcon: false, mcap: PANGEA_START_MCAP_USD, pquote: 'usdc' };
 
 export default function Launch() {
   const w = useWallet();
@@ -47,7 +48,14 @@ export default function Launch() {
   const [net, setNet] = useState(4663);
   const [pnet, setPnet] = useState(4663); // Pangea home chain
   const chainId = isC ? net : isP ? pnet : 4663; // Pons is Robinhood only
-  const isPS = isP && chainId === SOL_ID; // Pangea on Solana: USDC pair, Solana wallet
+  // Pangea multi-chain: the same coin opened on several chains, each one signed and paid on that chain, within the hour
+  const [pextra, setPextra] = useState([]);
+  const plegs = isP ? [pnet, ...pextra.filter(x => x !== pnet)] : [];
+  const phome = plegs.includes(SOL_ID) ? SOL_ID : pnet; // Solana first (Pangea's rule for a self-launch)
+  const porder = [phome, ...plegs.filter(x => x !== phome)];
+  const isPM = isP && plegs.length > 1;
+  const isPS = isP && !isPM && chainId === SOL_ID; // Pangea on Solana only: Solana wallet
+  const hasSol = isP && plegs.includes(SOL_ID);
   const sym = isPS ? 'SOL' : CHAINS[chainId]?.sym || 'ETH';
   // Pangea: which chains currently accept a self-launch (opensPaused read on each chain)
   const [popen, setPopen] = useState({});
@@ -84,6 +92,7 @@ export default function Launch() {
         if (d.pf) setPf(d.pf);
         if (CHAINS[d.net]) setNet(d.net);
         if (PANGEA_NETS.includes(d.pnet)) setPnet(d.pnet);
+        if (Array.isArray(d.pextra)) setPextra(d.pextra.filter(x => PANGEA_NETS.includes(x)));
         if (d.uri) setImg({ file: null, preview: d.uri.startsWith('ipfs://') ? `/api/ipfs/${d.uri.replace('ipfs://', '')}` : d.uri, uri: d.uri, uploading: false });
       }
     } catch {}
@@ -91,8 +100,8 @@ export default function Launch() {
   }, []);
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem(DRAFT, JSON.stringify({ f: { ...f, payout: '' }, pf, net, pnet, uri: img.uri })); } catch {}
-  }, [f, pf, net, pnet, img.uri, loaded]);
+    try { localStorage.setItem(DRAFT, JSON.stringify({ f: { ...f, payout: '' }, pf, net, pnet, pextra, uri: img.uri })); } catch {}
+  }, [f, pf, net, pnet, pextra, img.uri, loaded]);
 
   const [credits, setCredits] = useState(null); // null = loading
   useEffect(() => {
@@ -147,14 +156,16 @@ export default function Launch() {
   const wlParsed = parseAddresses(wl);
   const wlOk = !pons || (!wlParsed.bad.length && wlParsed.list.length <= MAX_EXEMPT);
   // empty fee wallet = the connected wallet
-  const payoutOk = holders || isPS || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
+  const payoutOk = holders || isPS || isPM || !f.payout.trim() || isAddress(f.payout.trim(), { strict: false });
   const lim = LIMIT[pf];
   const lenOk = f.name.trim().length <= lim.name && f.symbol.length <= lim.symbol;
   const feeOk = !(!pons && Number(f.fee) < 1) && !(isP && !(Number(f.mcap) > 0));
-  const ready = (w.account || isPS) && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && wlOk && info?.canLaunch && credits != null && !st.step;
+  const pmOk = !isPM || porder.filter(x => x !== SOL_ID).every(x => popen[x] !== false);
+  const ready = (w.account || isPS) && pmOk && f.name.trim() && f.symbol.trim() && lenOk && feeOk && img.uri && payoutOk && wlOk && info?.canLaunch && credits != null && !st.step;
 
   async function launch(e) {
     e.preventDefault();
+    if (isPM) return launchMulti();
     if (isPS) return launchSolana();
     setSt({ step: 'Simulating transaction…' });
     try {
@@ -219,7 +230,8 @@ export default function Launch() {
       const evm = await window.ethereum?.request({ method: 'eth_accounts' }).then(a => a?.[0]).catch(() => null);
       const res = await launchPangeaSolana({
         name: f.name.trim(), symbol: f.symbol.trim(), uri, mcapUsd: Number(f.mcap), feeBps: Math.round(Number(f.fee) * 100),
-        creatorEvm: evm && isAddress(evm) ? getAddress(evm) : null, onStep: step => setSt(s => ({ ...s, step })),
+        creatorEvm: evm && isAddress(evm) ? getAddress(evm) : null, quote: f.pquote, solUsd: f.pquote === 'sol' ? await getNativeUsd(SOL_ID) : null,
+        onStep: step => setSt(s => ({ ...s, step })),
       });
       try { localStorage.removeItem(DRAFT); } catch {}
       setSt({ step: '', sol: res });
@@ -227,6 +239,73 @@ export default function Launch() {
       setSt(s => ({ ...s, step: '', err: er.code === 4001 || /reject|denied|cancel/i.test(er.message || '') ? 'Cancelled in the wallet' : (er.shortMessage || er.message || String(er)) }));
     }
   }
+
+  // Pangea multi-chain: one preimage (one coinId, one token address), the home first, then each other chain opened directly
+  // by the creator (the connected EVM wallet, the coin's creatorEvm) within the hour; each chain is signed and paid there
+  async function launchMulti(resume = null) {
+    const done = resume?.done ? [...resume.done] : [];
+    const save = x => { try { localStorage.setItem(MULTI, JSON.stringify(x, (k, v) => typeof v === 'bigint' ? `${v}n` : v)); } catch {} };
+    try {
+      const eth = window.ethereum;
+      if (!eth) throw new Error('MetaMask is needed for the EVM chains');
+      const [from] = await eth.request({ method: 'eth_requestAccounts' });
+      const creator = getAddress(from);
+      const job = resume || {
+        name: f.name.trim(), symbol: f.symbol.trim(), mcap: Number(f.mcap), feeBps: Math.round(Number(f.fee) * 100), quote: f.pquote,
+        order: porder, creator, at: Date.now(), image: img.uri,
+      };
+      if (job.creator !== creator) throw new Error(`Connect ${short(job.creator)}, the wallet that started this launch`);
+      if (!job.uri) { setSt({ step: 'Saving the token metadata…' }); job.uri = await pinContractMeta(contractMeta(f, img.uri)); }
+      let pre = job.pre ? JSON.parse(JSON.stringify(job.pre), (k, v) => typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v) : null;
+      for (const id of job.order) {
+        if (done.some(d => d.id === id)) continue;
+        const label = chainName(id);
+        if (pre && Date.now() - job.at > 58 * 60_000) throw new Error(`More than an hour since the launch: ${label} can no longer be opened from here (on Pangea, the creator authorizes it from the home chain)`);
+        if (id === SOL_ID) {
+          const r = await launchPangeaSolana({
+            name: job.name, symbol: job.symbol, uri: job.uri, mcapUsd: job.mcap, feeBps: job.feeBps, creatorEvm: creator, quote: job.quote,
+            solUsd: job.quote === 'sol' ? await getNativeUsd(SOL_ID) : null, onStep: step => setSt(s => ({ ...s, step: `${label}: ${step}` })),
+          });
+          pre = r.pre; job.at = Date.now();
+          done.push({ id, token: r.mint, tx: r.signature });
+        } else {
+          setSt(s => ({ ...s, step: `${label}: switch the network in MetaMask…` }));
+          await switchChain(eth, id);
+          if (!pre) {
+            setSt(s => ({ ...s, step: 'Finding the 6ea token address (~15s)…' }));
+            ({ pre } = await pangeaPreimage({ readId: id, homePcid: id, name: job.name, symbol: job.symbol, creator }));
+            job.at = Date.now();
+          }
+          const usd = await getNativeUsd(id);
+          if (!usd) throw new Error(`${CHAINS[id].sym} price unavailable, try again`);
+          setSt(s => ({ ...s, step: `${label}: simulating…` }));
+          const tx = await buildPangeaOpenTx({ chainId: id, account: creator, pre, name: job.name, symbol: job.symbol, metadataURI: job.uri, feeBps: job.feeBps, mcapEth: job.mcap / usd });
+          setSt(s => ({ ...s, step: `${label}: confirm in MetaMask (gas in ${CHAINS[id].sym})…` }));
+          const hash = await eth.request({ method: 'eth_sendTransaction', params: [{ from, to: tx.to, data: tx.data, value: '0x' + tx.value.toString(16) }] });
+          setSt(s => ({ ...s, step: `${label}: waiting for confirmation…` }));
+          const rc = await waitOn(id, hash);
+          if (rc.status !== 'success') throw new Error(`${label}: the open transaction failed`);
+          const L = parsePangeaLaunch(rc.logs);
+          if (L?.token) await recordLaunch({ chainId: id, platform: 'pangea', token: L.token, poolId: L.poolId, deployer: creator, block: rc.blockNumber, txHash: hash }).catch(() => {});
+          done.push({ id, token: L?.token, tx: hash, block: Number(rc.blockNumber) });
+        }
+        save({ ...job, pre, done });
+        setSt(s => ({ ...s, multi: done }));
+      }
+      try { localStorage.removeItem(MULTI); localStorage.removeItem(DRAFT); } catch {}
+      setSt({ step: '', multi: done, multiDone: true });
+    } catch (er) {
+      const msg = er.code === 4001 || /reject|denied|cancel/i.test(er.message || '') ? 'Cancelled in the wallet' : (er.shortMessage || er.message || String(er));
+      setSt(s => ({ ...s, step: '', multi: done.length ? done : s.multi, err: done.length ? `${msg}. Opened so far: ${done.map(d => chainName(d.id)).join(', ')}. Press Continue to open the rest (within the hour).` : msg }));
+    }
+  }
+  const [pending, setPending] = useState(null); // an unfinished multi-chain launch
+  useEffect(() => {
+    try {
+      const j = JSON.parse(localStorage.getItem(MULTI) || 'null');
+      if (j && Date.now() - j.at < 58 * 60_000 && j.done?.length && j.done.length < j.order.length) setPending(j); else localStorage.removeItem(MULTI);
+    } catch {}
+  }, [st.step]);
 
   // Pangea: start market cap in USD → the chain's native coin (ETH, BNB), then grind the 6ea salt + simulate
   async function pangeaTx(from, form, metadataURI) {
@@ -256,6 +335,27 @@ export default function Launch() {
       return `Token launched, but fees were not handed to holders yet (${er.code === 4001 ? 'cancelled' : er.shortMessage || er.message}). Until then they go to your wallet; you can finish on ponsfamily.com from the token page.`;
     }
     return '';
+  }
+
+  if (st.multiDone) {
+    return (
+      <>
+        <PageHeader icon={IconBolt} title="Launch successful" desc={`${f.name || 'Your token'} is live on Pangea on ${st.multi.length} chains: the same coin, one creator, each chain opened from your wallet.`} />
+        <div className="card">
+          {st.multi.map(d => (
+            <div key={d.id} className="kv" style={{ alignItems: 'center' }}>
+              <span><ChainBadge id={d.id} /></span>
+              <span className="mono small">
+                {d.id === SOL_ID
+                  ? <><a href={`https://www.pangea.trade/app/t/${d.token}`} target="_blank" rel="noreferrer">{d.token}</a> · <a href={`https://solscan.io/tx/${d.tx}`} target="_blank" rel="noreferrer">tx</a></>
+                  : <><a href={`/launches/${d.token}?pf=pangea&chain=${d.id}&b=${d.block}`}>{d.token}</a> · <a href={`${CHAINS[d.id].explorer}/tx/${d.tx}`} target="_blank" rel="noreferrer">tx</a></>}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="hint"><a href="/launch" onClick={() => location.reload()}>← Launch another token</a></p>
+      </>
+    );
   }
 
   if (st.sol) {
@@ -314,7 +414,8 @@ export default function Launch() {
   return (
     <>
       <PageHeader icon={IconBolt} title="Launch token" desc={isP
-        ? isPS ? 'Create a token on Pangea v4 on Solana (Meteora pool, USDC pair) from your own Solana wallet (MetaMask Solana or Phantom): no launch fee, about 0.05 SOL of rent and fees, 2 signatures. Your Solana wallet is the creator and gets the creator fees; the other chains stay listed and can be opened later on Pangea.'
+        ? isPM ? `One Pangea v4 coin on ${porder.map(chainName).join(' + ')}: ${chainName(porder[0])} is the home and opens first, then each other chain is opened from your wallet (the same token, one creator). Each chain is a separate signature paid in its own gas${hasSol ? ' (Solana: your Solana wallet, about 0.05 SOL)' : ''}; all must be opened within an hour of the first. No launch fee. Pangea keeps 20% of the trading fee.`
+        : isPS ? 'Create a token on Pangea v4 on Solana (Meteora pool, USDC or SOL pair) from your own Solana wallet (MetaMask Solana or Phantom): no launch fee, about 0.05 SOL of rent and fees, 2 signatures. Your Solana wallet is the creator and gets the creator fees; the other chains stay listed and can be opened later on Pangea.'
         : `Create a token on Pangea v4 (Uniswap v4, ${sym} pair) on ${CHAINS[chainId].name} from your own wallet: no launch fee, gas only (paid in ${sym}). Pangea keeps 20% of the trading fee, the rest goes to your fee wallet. One chain per launch.`
         : isC
         ? `Create a token on ${PL} (Uniswap v4, ETH pair). Your share of the buy/sell fee goes straight to your fee wallet.`
@@ -326,7 +427,10 @@ export default function Launch() {
         <span className="muted small">Network</span>
         {isC
           ? <div className="seg">{CHAIN_IDS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setNet(id)} disabled={!!st.step}><ChainIcon id={id} className="chain-ic" />{CHAINS[id].name}</button>)}</div>
-          : isP ? <div className="seg">{PANGEA_NETS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => setPnet(id)} disabled={!!st.step || popen[id] === false} title={popen[id] === false ? 'Pangea launches are closed on this chain right now' : ''}><ChainIcon id={id} className="chain-ic" />{chainName(id)}</button>)}</div>
+          : isP ? <div style={{ display: 'grid', gap: 8 }}>
+            <div className="seg">{PANGEA_NETS.map(id => <button key={id} type="button" className={chainId === id ? 'on' : ''} onClick={() => { setPnet(id); setPextra(x => x.filter(y => y !== id)); }} disabled={!!st.step || popen[id] === false} title={popen[id] === false ? 'Pangea launches are closed on this chain right now' : ''}><ChainIcon id={id} className="chain-ic" />{chainName(id)}</button>)}</div>
+            <div className="seg" style={{ flexWrap: 'wrap' }}><span className="muted small" style={{ alignSelf: 'center', marginRight: 6 }}>Also open on</span>{PANGEA_NETS.filter(id => id !== pnet).map(id => { const on = pextra.includes(id); return <button key={id} type="button" className={on ? 'on' : ''} onClick={() => setPextra(x => on ? x.filter(y => y !== id) : [...x, id])} disabled={!!st.step || popen[id] === false}>{on ? '✓ ' : ''}{chainName(id)}</button>; })}</div>
+          </div>
           : <ChainBadge id={4663} />}
       </div>
       <form className="launch" onSubmit={launch}>
@@ -376,8 +480,12 @@ export default function Launch() {
               ))}
             </fieldset>
           )}
-          {isPS && <p className="muted small">Creator fees (in USDC) go to the Solana wallet that launches.</p>}
-          {!holders && !isPS && <>
+          {hasSol && <label><L icon={IconCoin}>Solana pool pair</L>
+            <div className="seg">{[['usdc', 'USDC'], ['sol', 'SOL']].map(([k, n]) => <button key={k} type="button" className={f.pquote === k ? 'on' : ''} onClick={() => setF(v => ({ ...v, pquote: k }))} disabled={!!st.step}>{n}</button>)}</div>
+            <small className="muted">{f.pquote === 'sol' ? 'Paired with SOL (wrapped SOL): buyers pay in SOL, creator fees arrive as wrapped SOL. Opens with no USD route, like Pangea\'s own SOL pairs.' : 'Paired with USDC (Pangea\'s default): creator fees arrive in USDC.'}</small></label>}
+          {isPS && <p className="muted small">Creator fees go to the Solana wallet that launches.</p>}
+          {isPM && <p className="muted small">Multi-chain: the connected MetaMask wallet is the coin's creator and fee wallet on the EVM chains{hasSol ? ', your Solana wallet on Solana' : ''}.</p>}
+          {!holders && !isPS && !isPM && <>
             <label><L icon={IconWallet}>Creator fee wallet</L><input className="mono" value={f.payout} onChange={set('payout')} placeholder={w.account ? `Connected wallet (${short(w.account)})` : 'Connected wallet'} /></label>
             <p className="muted small">{!pons ? `Receives the creator share of the trading fee (in ${sym}), claimable on the token page.` : 'Receives 70% of the base fee + 100% of the creator fee, claimable on the Check pages and the token page.'} Leave empty to use the connected wallet; paste an address only to send fees elsewhere.</p>
           </>}
@@ -409,7 +517,8 @@ export default function Launch() {
           </div>
           {info && !info.canLaunch && <ErrorLine msg={!pons ? `${PL} launches are currently closed.` : 'Pons currently only allows whitelisted wallets to launch.'} />}
           {!w.account && !isPS && <p className="hint">Click <b>Connect Wallet</b> in the sidebar to launch.</p>}
-          <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || (isPS ? 'Launch on Solana' : 'Launch with MetaMask')}</button>
+          <button className="btn-primary big-btn" disabled={!ready}><IconBolt />{st.step || (isPM ? `Launch on ${porder.length} chains` : isPS ? 'Launch on Solana' : 'Launch with MetaMask')}</button>
+          {pending && !st.step && <button type="button" className="btn-ghost" onClick={() => launchMulti(pending)}>Continue: open {pending.order.filter(id => !pending.done.some(d => d.id === id)).map(chainName).join(', ')} for {pending.name}</button>}
           {st.hash && CHAINS[chainId] && <a className="mono small" href={`${CHAINS[chainId].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">tx {st.hash.slice(0, 14)}…</a>}
           {!lenOk && <ErrorLine msg={`${PLATFORMS[pf]} allows a name up to ${lim.name} and a ticker up to ${lim.symbol} characters.`} />}
           {st.err && <ErrorLine msg={st.err} />}
