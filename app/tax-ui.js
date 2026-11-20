@@ -159,13 +159,13 @@ const errText = e => (e.code === 4001 ? 'Cancelled in MetaMask' : (e.shortMessag
 
 // Clanker v0–v4 claim for one or many wallets. v2 / v3 / v3.1 / v4 claims can be sent by any wallet (fees still
 // go to each token's recipient), batched through Multicall3; v0 / v1 need the connected wallet to own the position.
-export function ClassicClaim({ results, onDone, label }) {
+export function ClassicClaim({ results, onDone, label, compact }) {
   const w = useWallet();
   const [st, setSt] = useState({ busy: '', err: '', hash: '' });
   const open = classicOpenCalls(results);
   const ownerToks = results.flatMap(r => r.tokens.filter(t => !t.error && t.hasFees && (t.type === 'proxy' || t.type === 'clanker')));
   const mineOwner = ownerToks.filter(t => w.account && t.recipient && t.recipient.toLowerCase() === w.account.toLowerCase());
-  if (!open.length && !ownerToks.length) return <small className="muted">Nothing to claim</small>;
+  if (!open.length && !ownerToks.length) return compact ? null : <small className="muted">Nothing to claim</small>;
   async function claim() {
     setSt({ busy: 'Preparing…', err: '', hash: '' });
     try {
@@ -182,8 +182,10 @@ export function ClassicClaim({ results, onDone, label }) {
     <>
       {w.account
         ? <button type="button" className="btn-primary sm" disabled={!!st.busy || !n} onClick={claim}>{st.busy || `${label || 'Claim'}${n > 1 ? ` (${n} tx)` : ''}`}</button>
-        : <small className="muted">Connect any wallet to claim</small>}
-      {ownerToks.length > mineOwner.length && <small className="muted">{ownerToks.length - mineOwner.length} v0/v1 token(s) need their own wallet connected</small>}
+        : <small className="muted">Connect any wallet to claim{compact ? ' v0–v4' : ''}</small>}
+      {ownerToks.length > mineOwner.length && (compact
+        ? <small className="muted" title="v0 / v1 tokens are claimed by the wallet that owns the LP position">+{ownerToks.length - mineOwner.length} v0/v1 need this wallet</small>
+        : <small className="muted">{ownerToks.length - mineOwner.length} v0/v1 token(s) need their own wallet connected</small>)}
       {st.hash && !st.busy && !st.err && <a className="ok small" href={`${CHAINS[BASE].explorer}/tx/${st.hash}`} target="_blank" rel="noreferrer">Claimed <IconExternal /></a>}
       {st.err && <ErrorLine msg={st.err} />}
     </>

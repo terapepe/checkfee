@@ -81,10 +81,28 @@ export function TokenTable({ rows, ethUsd, wallet }) {
   );
 }
 
-// claimable per source with its claim button; empty sources collapse into one line
-export function SourceList({ sources, ethUsd, onReload, showWallet }) {
+// the claim button of one source (platform + network of one wallet)
+function SourceAction({ s, onReload, compact }) {
   const w = useWallet();
   const isMe = a => w.account && a && w.account.toLowerCase() === a.toLowerCase();
+  if (s.pf === 'classic') return <ClassicClaim results={[s.res]} onDone={onReload} compact={compact} label={compact ? 'Claim v0–v4' : undefined} />;
+  if (s.amount === 0n) return compact ? null : <small className="muted">Nothing to claim</small>;
+  if (s.pf === 'pons') {
+    if (!s.calls.length) return compact ? null : <small className="muted">Nothing to claim</small>;
+    return isMe(s.wallet) ? <ClaimAll wallet={s.wallet} calls={s.calls} /> : <small className="muted">Connect {short(s.wallet)} to claim Pons</small>;
+  }
+  return <TaxClaim pf={s.pf} chainId={s.chainId} wallet={s.wallet} owed={s.amount} onDone={onReload} />;
+}
+
+// every claim button of one wallet, in one cell (multi-wallet table)
+export function WalletClaims({ res, onReload }) {
+  const live = sourcesOf(res).filter(s => s.amount > 0n || (s.pf === 'classic' && s.res.tokens.some(t => t.hasFees)));
+  if (!live.length) return <small className="muted">Nothing to claim</small>;
+  return <div className="ck-claims">{live.map(s => <div key={s.key}><SourceAction s={s} onReload={onReload} compact /></div>)}</div>;
+}
+
+// claimable per source with its claim button; empty sources collapse into one line
+export function SourceList({ sources, ethUsd, onReload, showWallet }) {
   const live = sources.filter(s => s.amount > 0n || s.tokens > 0);
   const empty = sources.filter(s => !(s.amount > 0n || s.tokens > 0));
   return (
@@ -95,13 +113,7 @@ export function SourceList({ sources, ethUsd, onReload, showWallet }) {
             {showWallet && <a className="mono small muted" href={`${CHAINS[s.chainId].explorer}/address/${s.wallet}`} target="_blank" rel="noreferrer">{short(s.wallet)}</a>}
             <small className="muted">{s.tokens} token{s.tokens === 1 ? '' : 's'}</small></span>
           <span className="ck-src-amt"><b>{fmt(s.amount)} ETH</b><small className="muted">{usd(s.amount, ethUsd)}</small></span>
-          <span className="ck-src-act">
-            {s.pf === 'classic' ? <ClassicClaim results={[s.res]} onDone={onReload} />
-              : s.amount === 0n ? <small className="muted">Nothing to claim</small>
-              : s.pf === 'pons' ? (!s.calls.length ? <small className="muted">Nothing to claim</small>
-                : isMe(s.wallet) ? <ClaimAll wallet={s.wallet} calls={s.calls} /> : <small className="muted">Connect {short(s.wallet)} to claim</small>)
-              : <TaxClaim pf={s.pf} chainId={s.chainId} wallet={s.wallet} owed={s.amount} onDone={onReload} />}
-          </span>
+          <span className="ck-src-act"><SourceAction s={s} onReload={onReload} /></span>
         </div>
       ))}
       {empty.length > 0 && <p className="muted small ck-empty">No tokens on {empty.map(s => label(s.pf, s.chainId)).join(', ')}.</p>}

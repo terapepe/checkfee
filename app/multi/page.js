@@ -7,7 +7,7 @@ import {
 import { CHAINS, CHAIN_IDS } from '../../lib/chains';
 import { IconWallets, IconRefresh } from '../icons';
 import { usePlatforms, PlatformToggle, ponsOn, taxJobs, classicOn, ClassicClaim } from '../tax-ui';
-import { CheckResult } from '../check-ui';
+import { CheckResult, WalletClaims } from '../check-ui';
 import { prefetchTaxWallets } from '../../lib/tax-check';
 
 // one wallet on the selected platforms
@@ -94,7 +94,7 @@ export default function Multi() {
 
           <div className="card table-wrap">
             <table className="table">
-              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker v5</th><th>Clanker v0–v4</th><th>o1</th><th>USD</th><th /></tr></thead>
+              <thead><tr><th>Wallet</th><th>Tokens</th><th>Pons to sweep</th><th>Pons escrow</th><th>Clanker v5</th><th>Clanker v0–v4</th><th>o1</th><th>USD</th><th>Claim</th><th /></tr></thead>
               <tbody>
                 {results.map(r => {
                   const t = r.res && totals(r.res);
@@ -110,12 +110,13 @@ export default function Multi() {
                           <td>{r.res.classic ? `${fmt(t.classic)} ETH` : '—'}</td>
                           <td>{has(r.res, 'o1') ? `${fmt(t.o1)} ETH` : '—'}</td>
                           <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker + t.classic + t.o1) * ethUsd) : '—'}</td>
+                          <td><WalletClaims res={r.res} onReload={() => recheck(r.wallet)} /></td>
                           <td>{nets.map(id => <a key={id} href={`${CHAINS[id].explorer}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small" style={{ marginRight: 8 }}>{nets.length > 1 ? CHAINS[id].name : 'Blockscout'}</a>)}</td>
                         </>
                       ) : r.loading ? (
-                        <td colSpan={8}><span className="loading inline"><span className="spin" />Checking…</span></td>
+                        <td colSpan={9}><span className="loading inline"><span className="spin" />Checking…</span></td>
                       ) : (
-                        <td colSpan={8}>
+                        <td colSpan={9}>
                           <span className="err">{r.err}</span>{' '}
                           <button type="button" className="btn-ghost sm" disabled={loading} onClick={() => recheck(r.wallet)}><IconRefresh />Retry</button>
                         </td>
