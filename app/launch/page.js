@@ -11,7 +11,7 @@ import { recordLaunch, approveData } from '../../lib/market';
 import { TAX, readTaxInfo, buildTaxTx, parseTaxLaunch, contractMeta, pinContractMeta } from '../../lib/tax';
 import { CHAINS, CHAIN_IDS, switchChain, waitOn } from '../../lib/chains';
 import { ChainIcon, ChainBadge, chainName } from '../icons';
-import { SOL, launchPangeaSolana } from '../../lib/pangea-sol';
+import { SOL, launchPangeaSolana, connectSolWallet, svmHex } from '../../lib/pangea-sol';
 const MULTI = 'checkfee_pangea_multi'; // a multi-chain launch in progress (resume within the hour)
 const SOL_ID = SOL.pcid; // Pangea's Solana pcid, used as the network id on this page
 const PANGEA_NETS = [4663, 8453, 1, 56, SOL_ID];
@@ -51,7 +51,8 @@ export default function Launch() {
   // Pangea multi-chain: the same coin opened on several chains, each one signed and paid on that chain, within the hour
   const [pextra, setPextra] = useState([]);
   const plegs = isP ? [pnet, ...pextra.filter(x => x !== pnet)] : [];
-  const phome = plegs.includes(SOL_ID) ? SOL_ID : pnet; // Solana first (Pangea's rule for a self-launch)
+  // Robinhood first when it is in the launch, else Solana, else the chosen chain
+  const phome = plegs.includes(4663) ? 4663 : plegs.includes(SOL_ID) ? SOL_ID : pnet;
   const porder = [phome, ...plegs.filter(x => x !== phome)];
   const isPM = isP && plegs.length > 1;
   const isPS = isP && !isPM && chainId === SOL_ID; // Pangea on Solana only: Solana wallet
@@ -256,6 +257,11 @@ export default function Launch() {
       };
       if (job.creator !== creator) throw new Error(`Connect ${short(job.creator)}, the wallet that started this launch`);
       if (!job.uri) { setSt({ step: 'Saving the token metadata…' }); job.uri = await pinContractMeta(contractMeta(f, img.uri)); }
+      // a Solana leg after an EVM home: its Solana creator is fixed in the coin id, so connect that wallet first
+      if (!job.pre && job.order[0] !== SOL_ID && job.order.includes(SOL_ID) && !job.svm) {
+        setSt({ step: 'Connect your Solana wallet (it becomes the coin\'s Solana creator)…' });
+        job.svm = (await connectSolWallet()).address;
+      }
       let pre = job.pre ? JSON.parse(JSON.stringify(job.pre), (k, v) => typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v) : null;
       for (const id of job.order) {
         if (done.some(d => d.id === id)) continue;
@@ -264,16 +270,17 @@ export default function Launch() {
         if (id === SOL_ID) {
           const r = await launchPangeaSolana({
             name: job.name, symbol: job.symbol, uri: job.uri, mcapUsd: job.mcap, feeBps: job.feeBps, creatorEvm: creator, quote: job.quote,
-            solUsd: job.quote === 'sol' ? await getNativeUsd(SOL_ID) : null, onStep: step => setSt(s => ({ ...s, step: `${label}: ${step}` })),
+            solUsd: job.quote === 'sol' ? await getNativeUsd(SOL_ID) : null, pre, onStep: step => setSt(s => ({ ...s, step: `${label}: ${step}` })),
           });
-          pre = r.pre; job.at = Date.now();
+          if (!pre) job.at = Date.now();
+          pre = r.pre;
           done.push({ id, token: r.mint, tx: r.signature });
         } else {
           setSt(s => ({ ...s, step: `${label}: switch the network in MetaMask…` }));
           await switchChain(eth, id);
           if (!pre) {
             setSt(s => ({ ...s, step: 'Finding the 6ea token address (~15s)…' }));
-            ({ pre } = await pangeaPreimage({ readId: id, homePcid: id, name: job.name, symbol: job.symbol, creator }));
+            ({ pre } = await pangeaPreimage({ readId: id, homePcid: id, name: job.name, symbol: job.symbol, creator, ...(job.svm ? { creatorSvm: svmHex(job.svm) } : {}) }));
             job.at = Date.now();
           }
           const usd = await getNativeUsd(id);
@@ -414,7 +421,7 @@ export default function Launch() {
   return (
     <>
       <PageHeader icon={IconBolt} title="Launch token" desc={isP
-        ? isPM ? `One Pangea v4 coin on ${porder.map(chainName).join(' + ')}: ${chainName(porder[0])} is the home and opens first, then each other chain is opened from your wallet (the same token, one creator). Each chain is a separate signature paid in its own gas${hasSol ? ' (Solana: your Solana wallet, about 0.05 SOL)' : ''}; all must be opened within an hour of the first. No launch fee. Pangea keeps 20% of the trading fee.`
+        ? isPM ? `One Pangea v4 coin on ${porder.map(chainName).join(' → ')}: ${chainName(porder[0])} is the home and opens first, then each other chain is opened from your wallet (the same token, one creator). Each chain is a separate signature paid in its own gas${hasSol ? ' (Solana: your Solana wallet, about 0.05 SOL)' : ''}; all must be opened within an hour of the first. No launch fee. Pangea keeps 20% of the trading fee.`
         : isPS ? 'Create a token on Pangea v4 on Solana (Meteora pool, USDC or SOL pair) from your own Solana wallet (MetaMask Solana or Phantom): no launch fee, about 0.05 SOL of rent and fees, 2 signatures. Your Solana wallet is the creator and gets the creator fees; the other chains stay listed and can be opened later on Pangea.'
         : `Create a token on Pangea v4 (Uniswap v4, ${sym} pair) on ${CHAINS[chainId].name} from your own wallet: no launch fee, gas only (paid in ${sym}). Pangea keeps 20% of the trading fee, the rest goes to your fee wallet. One chain per launch.`
         : isC
