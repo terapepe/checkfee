@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react';
 import {
   WalletResult, fetchWallet, fetchTaxWallet, useWallet, PageHeader, ErrorLine, Stats, parseAddresses,
-  walletEthTotals, fmt, fmtUsd, toEth, short, EXPLORER,
+  walletEthTotals, fmt, fmtUsd, toEth, short,
 } from '../ui';
+import { CHAINS, CHAIN_IDS } from '../../lib/chains';
 import { IconWallets, IconRefresh } from '../icons';
 import { usePlatforms, PlatformToggle, ponsOn, taxJobs } from '../tax-ui';
 import { CheckResult } from '../check-ui';
@@ -25,6 +26,8 @@ export default function Multi() {
   const [err, setErr] = useState('');
   const w = useWallet();
   const [pf, togglePf] = usePlatforms();
+  // explorer link(s) of the networks being checked (Pons is Robinhood only)
+  const nets = CHAIN_IDS.filter(id => pf[`n${id}`]);
 
   // wallet connected / switched in MetaMask → add to the list if missing
   useEffect(() => {
@@ -100,7 +103,7 @@ export default function Multi() {
                           <td>{has(r.res, 'clanker') ? `${fmt(t.clanker)} ETH` : '—'}</td>
                           <td>{has(r.res, 'o1') ? `${fmt(t.o1)} ETH` : '—'}</td>
                           <td className="accent">{ethUsd ? fmtUsd(toEth(t.pending + t.escrow + t.clanker + t.o1) * ethUsd) : '—'}</td>
-                          <td><a href={`${EXPLORER}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small">Blockscout</a></td>
+                          <td>{nets.map(id => <a key={id} href={`${CHAINS[id].explorer}/address/${r.wallet}`} target="_blank" rel="noreferrer" className="muted small" style={{ marginRight: 8 }}>{nets.length > 1 ? CHAINS[id].name : 'Blockscout'}</a>)}</td>
                         </>
                       ) : r.loading ? (
                         <td colSpan={7}><span className="loading inline"><span className="spin" />Checking…</span></td>

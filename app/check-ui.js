@@ -101,13 +101,16 @@ export function CheckResult({ res, onReload }) {
   const sources = sourcesOf(res);
   const total = sources.reduce((a, s) => a + s.amount, 0n);
   const rows = rowsOf(res, wallet);
+  // the networks this check covered (Pons = Robinhood), for the explorer links
+  const nets = [...new Set([...(pons ? [4663] : []), ...(res.tax || []).map(x => x.chainId).filter(id => CHAINS[id])])];
   return (
     <section className="ck">
       <div className="card ck-summary">
         <div className="ck-head">
           <div>
             <span className="muted small">Wallet</span>
-            <a className="mono ck-wallet" href={`${EXPLORER}/address/${wallet}`} target="_blank" rel="noreferrer">{wallet}</a>
+            <a className="mono ck-wallet" href={`${(CHAINS[nets[0]] || CHAINS[4663]).explorer}/address/${wallet}`} target="_blank" rel="noreferrer">{wallet}</a>
+            {nets.length > 1 && <span className="small">{nets.map(id => <a key={id} className="muted" style={{ marginRight: 8 }} href={`${CHAINS[id].explorer}/address/${wallet}`} target="_blank" rel="noreferrer">{CHAINS[id].name}</a>)}</span>}
           </div>
           <div className="ck-total">
             <span className="muted small">Total claimable</span>
