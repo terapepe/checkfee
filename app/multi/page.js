@@ -8,6 +8,7 @@ import { CHAINS, CHAIN_IDS } from '../../lib/chains';
 import { IconWallets, IconRefresh } from '../icons';
 import { usePlatforms, PlatformToggle, ponsOn, taxJobs, classicOn, ClassicClaim } from '../tax-ui';
 import { CheckResult } from '../check-ui';
+import { prefetchTaxWallets } from '../../lib/tax-check';
 
 // one wallet on the selected platforms
 const fetchBoth = (wallet, pf) => Promise.all([ponsOn(pf) ? fetchWallet(wallet) : null, classicOn(pf) ? fetchClassicWallet(wallet) : null, ...taxJobs(pf).map(([k, id]) => fetchTaxWallet(k, wallet, id))])
@@ -42,6 +43,8 @@ export default function Multi() {
     setErr(''); setLoading(true);
     const list = wallets.map(w => ({ wallet: w, res: null, err: '', loading: true }));
     setResults([...list]);
+    // Clanker v5 / o1: one log scan for all wallets per platform + network (best effort; falls back per wallet)
+    if (wallets.length > 1) await Promise.all(taxJobs(pf).map(([k, id]) => prefetchTaxWallets(k, wallets, id).catch(() => {})));
     // sequential to avoid public RPC rate limits
     for (let i = 0; i < list.length; i++) {
       try { list[i] = { ...list[i], res: await fetchBoth(list[i].wallet, pf), loading: false }; }
